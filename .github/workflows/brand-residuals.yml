@@ -38,7 +38,10 @@ jobs:
         run: shellcheck --severity=style --format=gcc scripts/*.sh Plugin/hooks/*.sh
 
   macos-check:
-    runs-on: macos-15
+    # The release is built with Xcode 26. Checking on an older toolchain
+    # reports failures that will never reach a user, and — worse — passes
+    # code the release build would reject.
+    runs-on: macos-26
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -46,6 +49,12 @@ jobs:
           # `validate_build_number_is_new` reads shipped build numbers out of
           # the release tags, so a shallow clone would silently skip the check.
           fetch-depth: 0
+
+      - name: Select the newest installed Xcode
+        run: |
+          NEWEST="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          sudo xcode-select --switch "$NEWEST/Contents/Developer"
+          xcodebuild -version
 
       - name: Install ripgrep
         run: brew install ripgrep
