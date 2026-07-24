@@ -83,11 +83,20 @@ openssl enc -aes-256-cbc -pbkdf2 -salt -in "$HOME/Library/Application Support/Zu
 pbcopy < "$HOME/Library/Application Support/Zuuzii/Release Keys/LLM Pulse Sparkle Ed25519.key"
 ```
 
-**备份必须做恢复演练才算数。** 解密到临时路径后，确认导出的公钥与 `Info.plist` 中的 `SUPublicEDKey` 逐字符相同，然后删除临时文件：
+**备份必须做恢复演练才算数。** 解密后确认导出的公钥与 `Info.plist` 中的 `SUPublicEDKey` 逐字符相同，然后删除还原副本。
+
+还原目标**不能放在 `/tmp`**：`/tmp` 是指向 `private/tmp` 的符号链接，而 `sparkle_key_tool` 拒绝路径链上的任何符号链接；`/private/tmp` 本身又是 `1777` 全局可写，同样不满足父目录 `0700` 的要求。用一个自建的 `0700` 目录：
 
 ```bash
-openssl enc -d -aes-256-cbc -pbkdf2 -in "$HOME/Desktop/llm-pulse-sparkle-key.enc" -out /tmp/restore-check.key && chmod 600 /tmp/restore-check.key && swift scripts/sparkle_key_tool.swift public-key /tmp/restore-check.key && /usr/bin/plutil -extract SUPublicEDKey raw -o - LLMPulse/Resources/Info.plist; rm -f /tmp/restore-check.key
+D="$HOME/.llm-pulse-restore-check" && mkdir -p "$D" && chmod 700 "$D" && \
+openssl enc -d -aes-256-cbc -pbkdf2 -in "$HOME/Desktop/llm-pulse-sparkle-key.enc" -out "$D/restored.key" && \
+chmod 600 "$D/restored.key" && \
+swift scripts/sparkle_key_tool.swift public-key "$D/restored.key" && \
+/usr/bin/plutil -extract SUPublicEDKey raw -o - LLMPulse/Resources/Info.plist; \
+rm -rf "$D"
 ```
+
+两行输出一致即通过。`rm -rf` 用 `;` 而非 `&&` 连接，确保中途失败时还原副本也一定被清除。
 
 加密备份完成后把 `.enc` 移到离线介质或密码管理器附件，不要留在 Desktop、云同步目录或仓库内。
 
