@@ -300,6 +300,56 @@ enum SnoozeNotificationPolicy {
     }
 }
 
+/// Bridges `UNUserNotificationCenter` queries that hand back non-`Sendable`
+/// values.
+///
+/// `notificationSettings()` and `pendingNotificationRequests()` return types
+/// that cannot cross an isolation boundary, and whether the compiler accepts
+/// awaiting them directly depends on how the SDK in use annotates them. Going
+/// through the completion-handler form and projecting to `Sendable` values
+/// inside the callback compiles the same way on every toolchain.
+@MainActor
+enum NotificationCenterBridge {
+    /// Only the fields the snooze policy reads, all of them strings.
+    struct PendingRequest: Sendable {
+        let identifier: String
+        let userInfo: [String: String]
+
+        var policyUserInfo: [AnyHashable: Any] { userInfo }
+    }
+
+    static func authorizationStatus(
+        of center: UNUserNotificationCenter
+    ) async -> UNAuthorizationStatus {
+        await withCheckedContinuation { continuation in
+            center.getNotificationSettings { settings in
+                continuation.resume(returning: settings.authorizationStatus)
+            }
+        }
+    }
+
+    static func pendingRequests(
+        in center: UNUserNotificationCenter
+    ) async -> [PendingRequest] {
+        await withCheckedContinuation { continuation in
+            center.getPendingNotificationRequests { requests in
+                continuation.resume(returning: requests.map { request in
+                    PendingRequest(
+                        identifier: request.identifier,
+                        userInfo: request.content.userInfo.reduce(
+                            into: [String: String]()
+                        ) { result, entry in
+                            guard let key = entry.key as? String,
+                                  let value = entry.value as? String else { return }
+                            result[key] = value
+                        }
+                    )
+                })
+            }
+        }
+    }
+}
+
 @MainActor
 final class NotificationService {
     private let center: UNUserNotificationCenter
@@ -342,8 +392,8 @@ final class NotificationService {
     func requestAuthorizationIfNeeded() async {
         guard settings.notificationsEnabled else { return }
 
-        let currentSettings = await center.notificationSettings()
-        guard currentSettings.authorizationStatus == .notDetermined else { return }
+        let status = await NotificationCenterBridge.authorizationStatus(of: center)
+        guard status == .notDetermined else { return }
 
         _ = try? await center.requestAuthorization(options: [.alert, .badge, .sound])
     }
@@ -503,7 +553,7 @@ final class NotificationService {
         in snapshot: TaskSnapshot,
         asOf date: Date = .now
     ) async {
-        let requests = await center.pendingNotificationRequests()
+        let requests = await NotificationCenterBridge.pendingRequests(in: center)
         let snoozedRequests = requests.filter {
             $0.identifier.hasPrefix("llm-pulse.snooze.")
         }
@@ -512,7 +562,7 @@ final class NotificationService {
         settings.cleanupExpiredProjectMutes(asOf: date)
         let identifiersToRemove = snoozedRequests.compactMap { request in
             SnoozeNotificationPolicy.shouldKeep(
-                userInfo: request.content.userInfo,
+                userInfo: request.policyUserInfo,
                 snapshot: snapshot,
                 settings: settings,
                 asOf: date
@@ -526,8 +576,8 @@ final class NotificationService {
     }
 
     private func notificationReadiness() async -> NotificationReadiness {
-        let notificationSettings = await center.notificationSettings()
-        switch notificationSettings.authorizationStatus {
+        let status = await NotificationCenterBridge.authorizationStatus(of: center)
+        switch status {
         case .authorized, .provisional, .ephemeral:
             return .available
         case .notDetermined:

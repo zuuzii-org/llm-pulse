@@ -157,8 +157,9 @@ struct SettingsView: View {
     }
 
     private func refreshNotificationAuthorizationStatus() async {
-        let notificationSettings = await UNUserNotificationCenter.current().notificationSettings()
-        notificationAuthorizationStatus = notificationSettings.authorizationStatus
+        notificationAuthorizationStatus = await NotificationCenterBridge.authorizationStatus(
+            of: .current()
+        )
     }
 
     private func openSystemNotificationSettings() {
