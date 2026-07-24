@@ -181,7 +181,35 @@ cleanup() {
     /usr/bin/hdiutil detach "$MOUNT_DIR" -force >/dev/null 2>&1 || true
     MOUNTED=0
   fi
+  detach_stray_release_volume
   exit "$exit_code"
+}
+
+# Detaching by mount point misses a volume that ended up somewhere else.
+#
+# A release aborted during the Finder layout left the disk image attached at
+# `/Volumes/<volume name>` while the detach above was aimed at the requested
+# mount point, so the next run inherited a mounted stale image. The device is
+# read back from `hdiutil info`, which reports where the image actually is.
+# Reads `hdiutil info` on stdin and prints the device holding the release
+# volume, or nothing.
+#
+# hdiutil separates device, UUID, and mount point with tabs. Splitting on
+# whitespace instead truncates any volume name containing a space — which
+# this one does — and silently finds nothing.
+release_volume_device() {
+  /usr/bin/awk -F'\t' -v volume="/Volumes/$VOLUME_NAME" \
+    '$NF == volume { print $1; exit }'
+}
+
+detach_stray_release_volume() {
+  [[ -n "$VOLUME_NAME" ]] || return 0
+  local device
+  # Only images hdiutil itself reports as attached, never a directory that
+  # merely exists at that path.
+  device="$(/usr/bin/hdiutil info 2>/dev/null | release_volume_device)" || return 0
+  [[ -n "$device" ]] || return 0
+  /usr/bin/hdiutil detach "$device" -force >/dev/null 2>&1 || true
 }
 
 trap cleanup EXIT
@@ -934,6 +962,27 @@ apply_finder_layout() {
     return
   fi
 
+  # Finder needs a moment to make the freshly mounted volume's window
+  # scriptable, and how long is not predictable — a fixed delay fails as
+  # -10006 ("can't set ... of container window") often enough to lose a whole
+  # build plus two notarization round trips. The window is polled instead, and
+  # the whole thing retried, because the failure is transient.
+  local attempt
+  for attempt in 1 2 3; do
+    if apply_finder_layout_once "$background_name"; then
+      return
+    fi
+    warn "Finder DMG layout attempt $attempt did not complete; retrying"
+    /usr/bin/osascript -e 'tell application "Finder" to close every window' \
+      >/dev/null 2>&1 || true
+    /bin/sleep 2
+  done
+  die "Finder DMG layout failed after 3 attempts; \
+set SKIP_FINDER_LAYOUT=1 to ship a DMG without the custom icon arrangement"
+}
+
+apply_finder_layout_once() {
+  local background_name="$1"
   /usr/bin/osascript - "$MOUNT_DIR" "$DISTRIBUTED_APP_NAME" "$background_name" <<'APPLESCRIPT'
 on run argv
   set mountPath to item 1 of argv
@@ -943,7 +992,18 @@ on run argv
 
   tell application "Finder"
     open mountedFolder
-    delay 1
+    -- Wait for the window to become scriptable rather than assuming it is.
+    set readyAttempts to 0
+    repeat until readyAttempts is 30
+      try
+        if exists (container window of mountedFolder) then
+          set current view of (container window of mountedFolder) to icon view
+          exit repeat
+        end if
+      end try
+      set readyAttempts to readyAttempts + 1
+      delay 0.5
+    end repeat
     -- Resolve the exact custom mount path. Finder does not consistently
     -- expose `disk <volume name>` for volumes mounted outside /Volumes.
     set dmgWindow to container window of mountedFolder
