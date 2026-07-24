@@ -59,7 +59,37 @@ LLM Pulse 当前发布、构建和本地写入统一使用以下技术身份：
 - 不要把私钥内容放进 argv、环境变量、stdin、shell command substitution 或日志。`SPARKLE_PRIVATE_KEY_FILE` 只能保存路径。
 - 首次生成使用 `scripts/sparkle_key_tool.swift generate <absolute-path>`；该工具以 32-byte Ed25519 seed 新格式写入文件，拒绝覆盖、符号链接和弱权限。
 - Keychain 兼容模式必须显式设置 `SPARKLE_KEY_SOURCE=keychain`；文件模式发生任何错误都会立即停止，不会回退到 Keychain。
-- 在公开首个 Sparkle 版本前，为私钥制作一份独立加密备份，并从备份恢复验证相同的 `SUPublicEDKey`。丢失私钥会迫使用户手动安装后续版本。
+### 三项不可再生的凭据
+
+发布依赖三样只存在于发布机的东西。它们没有一样可以由他人重建，其中第一样丢失的后果是**不可挽回的**。
+
+| 凭据 | 位置 | 丢失后果 |
+| --- | --- | --- |
+| Sparkle Ed25519 私钥 | `~/Library/Application Support/Zuuzii/Release Keys/LLM Pulse Sparkle Ed25519.key` | **所有已安装版本的应用内更新永久失效。** `SUPublicEDKey` 已烧进每个发出的二进制，无法补发；用户只能手动重新下载 |
+| Developer ID Application 证书与私钥 | 登录 Keychain | 无法签名，需向 Apple 重新申请并作废旧证书 |
+| 公证 Keychain profile `LLMPulseNotary` | 登录 Keychain | 可用 Apple ID 重建，是三者中唯一可恢复的 |
+
+**Sparkle 私钥必须有一份离机备份，且必须验证过能恢复。** 这不是发布前的一次性任务，而是每次更换发布机、重装系统或轮换密钥后都要重做的前置条件。
+
+加密备份（口令交互输入，不进 shell history）：
+
+```bash
+openssl enc -aes-256-cbc -pbkdf2 -salt -in "$HOME/Library/Application Support/Zuuzii/Release Keys/LLM Pulse Sparkle Ed25519.key" -out "$HOME/Desktop/llm-pulse-sparkle-key.enc"
+```
+
+或直接存入密码管理器（走剪贴板，不经终端回显与滚动缓冲）：
+
+```bash
+pbcopy < "$HOME/Library/Application Support/Zuuzii/Release Keys/LLM Pulse Sparkle Ed25519.key"
+```
+
+**备份必须做恢复演练才算数。** 解密到临时路径后，确认导出的公钥与 `Info.plist` 中的 `SUPublicEDKey` 逐字符相同，然后删除临时文件：
+
+```bash
+openssl enc -d -aes-256-cbc -pbkdf2 -in "$HOME/Desktop/llm-pulse-sparkle-key.enc" -out /tmp/restore-check.key && chmod 600 /tmp/restore-check.key && swift scripts/sparkle_key_tool.swift public-key /tmp/restore-check.key && /usr/bin/plutil -extract SUPublicEDKey raw -o - LLMPulse/Resources/Info.plist; rm -f /tmp/restore-check.key
+```
+
+加密备份完成后把 `.enc` 移到离线介质或密码管理器附件，不要留在 Desktop、云同步目录或仓库内。
 
 ## 1. 锁定版本与源码
 
