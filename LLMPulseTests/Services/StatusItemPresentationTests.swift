@@ -324,12 +324,15 @@ final class StatusItemPresentationTests: XCTestCase {
         var toggleCount = 0
         controller.onTogglePanel = { toggleCount += 1 }
 
+        // Compared against the catalog rather than a literal: AppKit resolves
+        // this copy through the running system's language, so a hardcoded
+        // string only passes on a machine set to that language.
         XCTAssertEqual(
             button.accessibilityHelp(),
-            "左键显示或隐藏任务面板；右键或“打开更多选项”操作显示菜单。"
+            Self.systemCopy("左键显示或隐藏任务面板；右键或“打开更多选项”操作显示菜单。")
         )
         let customAction = try XCTUnwrap(button.accessibilityCustomActions()?.first)
-        XCTAssertEqual(customAction.name, "打开更多选项")
+        XCTAssertEqual(customAction.name, Self.systemCopy("打开更多选项"))
         XCTAssertTrue(customAction.target === controller)
         XCTAssertEqual(customAction.selector, #selector(StatusItemController.openMenuFromAccessibility))
 
@@ -367,13 +370,21 @@ final class StatusItemPresentationTests: XCTestCase {
 
         let menu = try XCTUnwrap(presentedMenu)
         let updateItem = try XCTUnwrap(
-            menu.items.first { $0.title == "检查更新…" }
+            menu.items.first { $0.title == Self.systemCopy("检查更新…") }
         )
         XCTAssertTrue(updateItem.target === controller)
         XCTAssertNotNil(updateItem.action)
         let updateItemIndex = try XCTUnwrap(menu.items.firstIndex(of: updateItem))
         menu.performActionForItem(at: updateItemIndex)
         XCTAssertEqual(checkForUpdatesCount, 1)
+    }
+
+    /// The catalog entry AppKit would resolve for the running system.
+    ///
+    /// Simplified Chinese is the key itself, so a machine set to it gets the
+    /// key back; every other language gets its translation.
+    private static func systemCopy(_ key: String) -> String {
+        PulseL10n.text(key, language: AppLanguage.system.effectiveInterfaceLanguage)
     }
 
     private func metricInkRows(
