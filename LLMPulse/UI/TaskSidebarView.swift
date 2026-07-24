@@ -1152,33 +1152,125 @@ private struct ModelUsageCard: View {
     let usage: ModelUsageSnapshot?
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(identity.displayName)
-                    .font(.caption.weight(.semibold))
-                Text(identity.modelID)
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
-            if let usage {
-                VStack(alignment: .trailing, spacing: 3) {
-                    Text("\(usage.inputTokens + usage.outputTokens)")
-                        .font(.caption.monospacedDigit().weight(.semibold))
-                    Text("tokens")
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(identity.displayName)
+                        .font(.caption.weight(.semibold))
+                    Text(PulseL10n.text("本机观测", language: language))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
-            } else {
-                Text(PulseL10n.text("待刷新", language: language))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                if let usage {
+                    VStack(alignment: .trailing, spacing: 3) {
+                        Text(PulseL10n.text(
+                            "共 %@ tokens",
+                            language: language,
+                            Self.tokenFormatter.string(
+                                from: NSNumber(value: usage.totalTokens)
+                            ) ?? "\(usage.totalTokens)"
+                        ))
+                        .font(.caption.monospacedDigit().weight(.semibold))
+                        Text(PulseL10n.text(
+                            "已观测 %d 次请求",
+                            language: language,
+                            usage.observedRequestCount
+                        ))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text(PulseL10n.text("待刷新", language: language))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let usage, usage.hasPlanUsage {
+                Divider().opacity(0.32)
+                planUsage(usage)
             }
         }
         .padding(12)
         .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 13))
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
+
+    /// Account-level windows, drawn as plain bars rather than as the quota
+    /// card Codex uses.
+    ///
+    /// The two carry different guarantees: Codex reports a window with an
+    /// exact reset time, while these have none and also span the whole
+    /// account. Making them look alike would invite reading one as the other,
+    /// so the footnote states both limits rather than leaving them implied.
+    @ViewBuilder
+    private func planUsage(_ usage: ModelUsageSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let window = usage.fiveHourWindow {
+                planUsageRow(
+                    title: PulseL10n.text("5 小时窗口", language: language),
+                    window: window
+                )
+            }
+            if let window = usage.sevenDayWindow {
+                planUsageRow(
+                    title: PulseL10n.text("7 天窗口", language: language),
+                    window: window
+                )
+            }
+            Text(PulseL10n.text("账户级用量 · 无重置时间", language: language))
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func planUsageRow(title: String, window: PlanUsageWindow) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Text(PulseL10n.text(
+                    "已用 %d%%",
+                    language: language,
+                    window.usedPercent
+                ))
+                .font(.caption2.monospacedDigit().weight(.semibold))
+                .foregroundStyle(.secondary)
+            }
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.1))
+                    Capsule()
+                        .fill(TaskSidebarPalette.selectedModelInk.opacity(0.75))
+                        .frame(
+                            width: max(
+                                0,
+                                proxy.size.width * CGFloat(window.usedPercent) / 100
+                            )
+                        )
+                }
+            }
+            .frame(height: 4)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(PulseL10n.text(
+            "%@已用 %d%%",
+            language: language,
+            title,
+            window.usedPercent
+        ))
+    }
+
+    private static let tokenFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        return formatter
+    }()
 }
 
 enum RateLimitCardPresentation {

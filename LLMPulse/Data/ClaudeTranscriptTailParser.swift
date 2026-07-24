@@ -171,15 +171,14 @@ struct ClaudeTranscriptTailParser: Sendable {
         guard let message = raw as? [String: Any] else { return }
 
         if let usage = message["usage"] as? [String: Any] {
-            let input = JSONValueSupport.int(usage["input_tokens"]) ?? 0
-            let cacheCreation = JSONValueSupport.int(usage["cache_creation_input_tokens"]) ?? 0
-            let cacheRead = JSONValueSupport.int(usage["cache_read_input_tokens"]) ?? 0
-            let output = JSONValueSupport.int(usage["output_tokens"]) ?? 0
             fold.tokens.apply(
                 messageID: JSONValueSupport.string(message["id"]),
-                inputTokens: input + cacheCreation + cacheRead,
-                cachedInputTokens: cacheRead,
-                outputTokens: output
+                promptTokens: JSONValueSupport.int(usage["input_tokens"]) ?? 0,
+                cacheCreationTokens: JSONValueSupport
+                    .int(usage["cache_creation_input_tokens"]) ?? 0,
+                cacheReadTokens: JSONValueSupport
+                    .int(usage["cache_read_input_tokens"]) ?? 0,
+                outputTokens: JSONValueSupport.int(usage["output_tokens"]) ?? 0
             )
         }
 

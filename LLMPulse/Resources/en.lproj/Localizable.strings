@@ -155,6 +155,11 @@
 "无法读取 Claude Code 会话列表" = "Unable to read the Claude Code session list";
 "无法读取 Claude Code 任务记录" = "Unable to read Claude Code task records";
 "Claude Code 子 Agent 记录尚未生成" = "Claude Code has not written any subagent records yet";
+"5 小时窗口" = "5-hour window";
+"7 天窗口" = "7-day window";
+"已用 %d%%" = "%d%% used";
+"%@已用 %d%%" = "%@, %d%% used";
+"账户级用量 · 无重置时间" = "Account-wide usage · no reset time available";
 "模型数据源暂不可用" = "The model data source is temporarily unavailable";
 "模型数据源刷新超时或返回了无效身份" = "The model data source timed out or returned an invalid identity";
 "刚刚" = "just now";

@@ -106,37 +106,51 @@ struct ClaudeTranscriptFold: Equatable, Sendable {
 /// repeat carries a larger cumulative `output_tokens`. Summing every record
 /// inflates the total severalfold, which looks entirely plausible on screen.
 struct ClaudeTokenFold: Equatable, Sendable {
-    var inputTokens = 0
-    var cachedInputTokens = 0
+    /// Fresh input, excluding anything served from or written to the cache.
+    var promptTokens = 0
+    var cacheCreationTokens = 0
+    var cacheReadTokens = 0
     var outputTokens = 0
 
+    /// Distinct assistant messages counted, not records seen.
+    var requestCount = 0
+
     private var lastMessageID: String?
-    private var lastInput = 0
-    private var lastCached = 0
+    private var lastPrompt = 0
+    private var lastCacheCreation = 0
+    private var lastCacheRead = 0
     private var lastOutput = 0
 
+    /// Everything that counted as input, matching Codex's convention that
+    /// cached tokens are a subset of input rather than a separate bucket.
+    var inputTokens: Int { promptTokens + cacheCreationTokens + cacheReadTokens }
     var totalTokens: Int { inputTokens + outputTokens }
 
     /// Applies one assistant record's usage, replacing the previous
     /// contribution when the record repeats a message already counted.
     mutating func apply(
         messageID: String?,
-        inputTokens newInput: Int,
-        cachedInputTokens newCached: Int,
+        promptTokens newPrompt: Int,
+        cacheCreationTokens newCacheCreation: Int,
+        cacheReadTokens newCacheRead: Int,
         outputTokens newOutput: Int
     ) {
         if let messageID, messageID == lastMessageID {
-            self.inputTokens += newInput - lastInput
-            cachedInputTokens += newCached - lastCached
-            self.outputTokens += newOutput - lastOutput
+            promptTokens += newPrompt - lastPrompt
+            cacheCreationTokens += newCacheCreation - lastCacheCreation
+            cacheReadTokens += newCacheRead - lastCacheRead
+            outputTokens += newOutput - lastOutput
         } else {
-            self.inputTokens += newInput
-            cachedInputTokens += newCached
-            self.outputTokens += newOutput
+            promptTokens += newPrompt
+            cacheCreationTokens += newCacheCreation
+            cacheReadTokens += newCacheRead
+            outputTokens += newOutput
+            requestCount += 1
         }
         lastMessageID = messageID
-        lastInput = newInput
-        lastCached = newCached
+        lastPrompt = newPrompt
+        lastCacheCreation = newCacheCreation
+        lastCacheRead = newCacheRead
         lastOutput = newOutput
     }
 
@@ -145,7 +159,7 @@ struct ClaudeTokenFold: Equatable, Sendable {
         return TokenUsageSnapshot(
             totalTokens: totalTokens,
             inputTokens: inputTokens,
-            cachedInputTokens: cachedInputTokens,
+            cachedInputTokens: cacheReadTokens,
             outputTokens: outputTokens,
             reasoningOutputTokens: nil
         )
@@ -165,7 +179,12 @@ struct ClaudeTranscriptTaskRecord: Sendable {
     let sessionID: String
     let transcriptURL: URL
     let status: TaskStatusRecord
-    let tokenUsage: TokenUsageSnapshot?
+
+    /// The full fold rather than its compressed form, so a model-level total
+    /// can keep the cache breakdown a `TokenUsageSnapshot` folds away.
+    let tokens: ClaudeTokenFold
+
+    var tokenUsage: TokenUsageSnapshot? { tokens.snapshot }
 }
 
 struct ClaudeTaskReadResult: Sendable {

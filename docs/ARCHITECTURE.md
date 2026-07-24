@@ -78,9 +78,21 @@ Claude 侧的证据比 Codex 更硬：`~/.claude/sessions/<pid>.json` 以进程�
 
 无对应存活进程的转录被钳制为终态：运行中/等待类一律转 `completed`，而 `interrupted`/`failed` 予以保留——后者是真实证据，前者只是证据缺失。否则每个被强杀的会话都会变成永久的幽灵行。
 
-### 不提供额度卡片
+### 用量与额度
 
-Claude 侧**不显示**周额度。百分比可以只读获得，重置时间不能：桌面应用刻意不持久化 `resets_at`。而现有 `RateLimitSnapshot` 契约要求三者齐全，放宽它会削弱 Codex 侧的保证。呈现一个外观与 Codex 相同却没有重置时间的卡片，会诱导读者假定相同的窗口语义。每会话 token 用量照常提供，且与 Codex 口径一致（缓存计入 input）。
+Claude 模型页的用量卡片分两部分，二者的保证强度不同，因此在视觉上也不同。
+
+**本机观测（强）**：LLM Pulse 自己从转录里折叠出的 token 累计与请求数，口径与 Codex 一致——缓存计入 input，`cachedInputTokens` 是 input 的子集——所以两个运行时的数字可直接比较。统计范围是当前列表中的会话，随保留窗口滚动，不声称是应用无从获知的历史总量。
+
+**账户额度（弱）**：读 `~/Library/Application Support/Claude/plan-usage-history.json` 的最新样本，得到 5 小时窗与 7 天窗的已用百分比。
+
+后者有三条硬限制，卡片必须如实呈现：
+
+- **没有重置时间。** 桌面应用把 `resets_at` 保存在内存里（`persist: false`），只读方式无从获得。因此它**不能**用 `RateLimitSnapshot` 承载——那个类型要求 `resetsAt` 非空，放宽它会削弱 Codex 侧的保证。改用独立的 `PlanUsageWindow`，并画成细进度条而非 Codex 那张额度卡：外观相同会诱导读者假定相同的窗口语义。
+- **账户级而非运行时级。** 桌面对话、Cowork 与 Claude Code 共用同一个数字，无法拆分。
+- **只在桌面应用运行时前进。** 仅 Electron 应用写这个文件，CLI 不写。超过 6 小时未更新的样本一律不显示——陈旧百分比在屏幕上与当前值无法区分。
+
+`plan-usage-history.json` 位于 Application Support 而非 `~/.claude`，因此 `CLAUDE_CONFIG_DIR` 不能重定向它，另有 `CLAUDE_APP_SUPPORT_DIR` 作为注入点。
 
 ## 状态归并
 

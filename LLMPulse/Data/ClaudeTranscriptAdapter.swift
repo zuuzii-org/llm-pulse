@@ -106,7 +106,7 @@ actor ClaudeTranscriptAdapter {
                 sessionID: sessionID,
                 transcriptURL: url,
                 status: status,
-                tokenUsage: cached.fold.tokens.snapshot
+                tokens: cached.fold.tokens
             ))
         }
 

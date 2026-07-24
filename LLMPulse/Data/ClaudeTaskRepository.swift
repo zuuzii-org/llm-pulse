@@ -9,6 +9,7 @@ actor ClaudeTaskRepository {
     private let registryReader: ClaudeSessionRegistryReader
     private let transcriptAdapter: ClaudeTranscriptAdapter
     private let agentObserver: ClaudeAgentActivityObserver
+    private let planUsageReader: ClaudePlanUsageReader
     private let paths: ClaudePaths
     private let runningStaleInterval: TimeInterval
     private let terminalRetentionInterval: TimeInterval
@@ -41,12 +42,15 @@ actor ClaudeTaskRepository {
             discoveryInterval: discoveryInterval
         )
         agentObserver = ClaudeAgentActivityObserver()
+        planUsageReader = ClaudePlanUsageReader(
+            planUsageHistoryURL: paths.planUsageHistoryURL
+        )
         self.paths = paths
         self.runningStaleInterval = runningStaleInterval
         self.terminalRetentionInterval = terminalRetentionInterval
     }
 
-    func snapshot(now: Date = .now) async -> TaskSnapshot {
+    func snapshot(now: Date = .now) async -> ModelTaskSnapshot {
         var health: [AdapterHealth] = []
 
         let entries: [ClaudeSessionRegistryEntry]
@@ -128,11 +132,54 @@ actor ClaudeTaskRepository {
             now: now
         )
 
-        return TaskSnapshot(
+        return ModelTaskSnapshot(
+            identity: .claudeCode,
             tasks: tasks,
-            refreshedAt: now,
+            usage: modelUsage(from: readResult.records, tasks: tasks, now: now),
+            // No quota card: the percentage is readable but its reset time is
+            // not, and `RateLimitWindowSnapshot` requires one. The percentages
+            // travel on `usage` instead, where nothing implies Codex's window
+            // semantics.
+            rateLimits: nil,
             health: health,
-            rateLimits: nil
+            refreshedAt: now
+        )
+    }
+
+    /// Model-level usage: what this app observed locally, plus the vendor's
+    /// account-level windows when they are readable.
+    ///
+    /// The token total covers the sessions actually on screen, so it moves
+    /// with the retention window rather than claiming to be an all-time
+    /// figure the app never had access to.
+    private func modelUsage(
+        from records: [ClaudeTranscriptTaskRecord],
+        tasks: [PulseTask],
+        now: Date
+    ) -> ModelUsageSnapshot? {
+        let visibleSessionIDs = Set(tasks.map(\.sessionID))
+        var totals = ClaudeTokenFold()
+        for record in records where visibleSessionIDs.contains(record.sessionID) {
+            totals.promptTokens += record.tokens.promptTokens
+            totals.cacheCreationTokens += record.tokens.cacheCreationTokens
+            totals.cacheReadTokens += record.tokens.cacheReadTokens
+            totals.outputTokens += record.tokens.outputTokens
+            totals.requestCount += record.tokens.requestCount
+        }
+
+        let planUsage = planUsageReader.read(now: now)
+        guard totals.totalTokens > 0 || planUsage != nil else { return nil }
+
+        return ModelUsageSnapshot(
+            inputTokens: totals.inputTokens,
+            outputTokens: totals.outputTokens,
+            cacheCreationInputTokens: totals.cacheCreationTokens,
+            cacheReadInputTokens: totals.cacheReadTokens,
+            observedRequestCount: totals.requestCount,
+            observedAt: now,
+            fiveHourWindow: planUsage?.fiveHourWindow,
+            sevenDayWindow: planUsage?.sevenDayWindow,
+            planUsageObservedAt: planUsage?.observedAt
         )
     }
 

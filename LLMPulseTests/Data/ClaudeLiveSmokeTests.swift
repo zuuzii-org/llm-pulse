@@ -49,12 +49,25 @@ final class ClaudeLiveSmokeTests: XCTestCase {
             XCTAssertGreaterThan(task.updatedAt.timeIntervalSince1970, 0)
         }
 
+        if let usage = snapshot.usage {
+            XCTAssertGreaterThanOrEqual(usage.inputTokens, usage.cacheReadInputTokens)
+            for window in [usage.fiveHourWindow, usage.sevenDayWindow].compactMap({ $0 }) {
+                XCTAssertTrue((0...100).contains(window.usedPercent))
+            }
+        }
+
         // Printed rather than asserted: an idle machine legitimately has none.
         print("""
         [claude-smoke] tasks=\(snapshot.tasks.count) \
         states=\(snapshot.tasks.map { $0.state.rawValue }) \
         tokens=\(snapshot.tasks.compactMap { $0.tokenUsage?.totalTokens }) \
         health=\(snapshot.health.map { "\($0.adapter):\($0.status)" })
+        [claude-smoke] usage total=\(snapshot.usage?.totalTokens ?? -1) \
+        requests=\(snapshot.usage?.observedRequestCount ?? -1) \
+        cacheWrite=\(snapshot.usage?.cacheCreationInputTokens ?? -1) \
+        cacheRead=\(snapshot.usage?.cacheReadInputTokens ?? -1) \
+        5h=\(snapshot.usage?.fiveHourWindow?.usedPercent.description ?? "nil")% \
+        7d=\(snapshot.usage?.sevenDayWindow?.usedPercent.description ?? "nil")%
         """)
     }
 }

@@ -14,13 +14,6 @@ struct ClaudeSourceRepository: ModelTaskRepositoryProtocol {
     }
 
     func snapshot(now: Date) async -> ModelTaskSnapshot {
-        let snapshot = await repository.snapshot(now: now)
-        return ModelTaskSnapshot(
-            identity: identity,
-            tasks: snapshot.tasks,
-            rateLimits: nil,
-            health: snapshot.health,
-            refreshedAt: snapshot.refreshedAt
-        )
+        await repository.snapshot(now: now)
     }
 }

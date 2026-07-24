@@ -15,6 +15,11 @@ struct ClaudePaths: Sendable {
     /// plus a `<sessionID>/` sidecar for subagents and workflows.
     let projectsDirectory: URL
 
+    /// Account-level plan usage, written by the desktop app rather than by the
+    /// CLI. It lives outside the config directory, so `CLAUDE_CONFIG_DIR`
+    /// alone does not redirect it and it carries its own override.
+    let planUsageHistoryURL: URL
+
     static func live(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
@@ -25,13 +30,29 @@ struct ClaudePaths: Sendable {
         } else {
             claudeHome = homeDirectory.appendingPathComponent(".claude", isDirectory: true)
         }
-        return ClaudePaths(claudeHome: claudeHome)
+
+        let applicationSupport: URL
+        if let configured = environment["CLAUDE_APP_SUPPORT_DIR"], !configured.isEmpty {
+            applicationSupport = URL(fileURLWithPath: configured, isDirectory: true)
+        } else {
+            applicationSupport = homeDirectory
+                .appendingPathComponent("Library", isDirectory: true)
+                .appendingPathComponent("Application Support", isDirectory: true)
+                .appendingPathComponent("Claude", isDirectory: true)
+        }
+
+        return ClaudePaths(
+            claudeHome: claudeHome,
+            applicationSupportDirectory: applicationSupport
+        )
     }
 
-    init(claudeHome: URL) {
+    init(claudeHome: URL, applicationSupportDirectory: URL? = nil) {
         self.claudeHome = claudeHome
         sessionsDirectory = claudeHome.appendingPathComponent("sessions", isDirectory: true)
         projectsDirectory = claudeHome.appendingPathComponent("projects", isDirectory: true)
+        planUsageHistoryURL = (applicationSupportDirectory ?? claudeHome)
+            .appendingPathComponent("plan-usage-history.json")
     }
 
     /// The sidecar directory beside a transcript, holding `subagents/` and
