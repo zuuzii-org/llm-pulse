@@ -25,7 +25,7 @@ The interface supports English and Simplified Chinese. Choose Follow System, 简
 
 | | |
 |---|---|
-| **Product** | LLM Pulse 2.0.2 |
+| **Product** | LLM Pulse 2.1.0 |
 | **Developer** | Zuuzii |
 | **Platform** | macOS 14 or later; Apple Silicon and Intel |
 | **Category** | Local Codex task monitor and menu bar utility |
@@ -37,20 +37,20 @@ The interface supports English and Simplified Chinese. Choose Follow System, 简
 
 ## Download
 
-[Download the latest signed and notarized DMG](https://github.com/zuuzii-org/llm-pulse/releases/latest). LLM Pulse 2.0.2 requires macOS 14 or later and ships as a Universal App for Apple Silicon and Intel Macs.
+[Download the latest signed and notarized DMG](https://github.com/zuuzii-org/llm-pulse/releases/latest). LLM Pulse 2.1.0 requires macOS 14 or later and ships as a Universal App for Apple Silicon and Intel Macs.
 
-The v2.0.2 release assets are:
+The v2.1.0 release assets are:
 
-- `LLM-Pulse-2.0.2.dmg`
-- `LLM-Pulse-2.0.2.dmg.sha256`
+- `LLM-Pulse-2.1.0.dmg`
+- `LLM-Pulse-2.1.0.dmg.sha256`
 
 Place both files in the same folder and verify the download with:
 
 ```bash
-shasum -a 256 -c LLM-Pulse-2.0.2.dmg.sha256
+shasum -a 256 -c LLM-Pulse-2.1.0.dmg.sha256
 ```
 
-Users on v1.0.0 must install v1.1.0 manually once because v1.0.0 did not include in-app updates. Users on v1.1–v1.3 should install and launch v1.4 before updating to v2.0.2.
+Users on v1.0.0 must install v1.1.0 manually once because v1.0.0 did not include in-app updates. Users on v1.1–v1.3 should install and launch v1.4 before updating to v2.1.0.
 
 ## What LLM Pulse shows
 
