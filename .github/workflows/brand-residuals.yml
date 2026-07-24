@@ -16,6 +16,12 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      # The scan is written against ripgrep and refuses to run without it.
+      # Neither runner image ships it, which is why this job had never
+      # actually reached the scan.
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install --yes ripgrep
+
       - name: Scan current identity files
         run: make check-brand
 
@@ -40,6 +46,9 @@ jobs:
           # `validate_build_number_is_new` reads shipped build numbers out of
           # the release tags, so a shallow clone would silently skip the check.
           fetch-depth: 0
+
+      - name: Install ripgrep
+        run: brew install ripgrep
 
       - name: Install pinned XcodeGen
         run: |
