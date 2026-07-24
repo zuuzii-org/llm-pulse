@@ -72,10 +72,13 @@ actor PluginEventJournalReader {
                 return
             }
 
+            // Only the four fields the plugin is allowed to write are read.
+            // `Plugin/hooks/record_event.js` builds each record from a closed
+            // whitelist — session_id, turn_id, hook_event_name, timestamp —
+            // so reading anything else would claim a wider contract than the
+            // writer can honour, and would quietly accept a project path from
+            // a journal the privacy notice promises never carries one.
             var accumulator = accumulators[sessionId] ?? Accumulator()
-            if let cwd = JSONValueSupport.string(object["cwd"]) {
-                accumulator.projectDirectory = cwd
-            }
             if let turnId = JSONValueSupport.string(object["turn_id"]) {
                 accumulator.turnId = turnId
             }

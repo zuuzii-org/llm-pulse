@@ -1,7 +1,7 @@
 import Foundation
 
 struct PulseHubRepository: PulseHubRepositoryProtocol {
-    private static let maximumTerminalTaskCount = 20
+    private static let maximumTerminalTaskCount = TaskRetentionPolicy.maximumTerminalTasks
 
     private struct Source: Sendable {
         let coordinator: TimedModelSource
@@ -255,6 +255,11 @@ actor TimedModelSource {
         generation &+= 1
         let currentGeneration = generation
         let source = source
+        // The flight keeps the `now` of the caller that opened it, so a slow
+        // source reports the moment its read began rather than the moment it
+        // finished. That is deliberate: `refreshedAt` drives the "updated N
+        // ago" label, and anchoring it to completion would claim the data is
+        // fresher than the instant it was actually observed.
         let task = Task { await source.snapshot(now: now) }
         let flight = Flight(generation: currentGeneration, task: task)
         inFlight = flight

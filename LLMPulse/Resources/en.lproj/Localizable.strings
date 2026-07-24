@@ -151,6 +151,11 @@
 "无法读取 Codex 任务事件记录" = "Unable to read Codex task event records";
 "插件事件日志尚未生成，当前使用兼容数据源" = "The plugin event journal is not available yet; using a compatible data source";
 "未查看状态暂时无法保存" = "Unread state cannot be saved right now";
+"Codex 数据格式可能已更新，部分任务无法识别" = "The Codex data format may have changed; some tasks cannot be recognized";
+"无法读取 Claude Code 会话列表" = "Unable to read the Claude Code session list";
+"无法读取 Claude Code 任务记录" = "Unable to read Claude Code task records";
+"Claude Code 子 Agent 记录尚未生成" = "Claude Code has not written any subagent records yet";
+"模型数据源暂不可用" = "The model data source is temporarily unavailable";
 "模型数据源刷新超时或返回了无效身份" = "The model data source timed out or returned an invalid identity";
 "刚刚" = "just now";
 "%d 秒前" = "%d seconds ago";

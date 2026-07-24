@@ -61,6 +61,7 @@ Users on v1.0.0 must install v1.1.0 manually once because v1.0.0 did not include
 - **Codex weekly usage.** The usage card shows the remaining weekly percentage, an exact reset date and time in the Mac’s current time zone, and data freshness.
 - **Direct task navigation.** Clicking a row opens the matching task through `codex://threads/<thread-id>`. A completion is marked viewed automatically only after the task opens successfully.
 - **Native notifications.** Choose attention-only, important, or all recognizable states. Notifications support task actions, 15-minute or 1-hour snooze, quiet completion summaries, and weekly usage warnings.
+- **Two runtimes, one panel.** Codex Desktop tasks and Claude Code sessions are observed side by side. Swipe left or right with two fingers, or press Control+Left/Right, to switch model pages. Menu bar totals stay global across both.
 - **Project controls.** Focus the panel on one Git project or mute that project’s notifications for an hour or until the next day. Menu bar totals remain global.
 - **macOS behavior.** Launch at login, multiple displays, reduced-motion support, configurable edge triggering in full-screen apps, and instant English/Simplified Chinese switching are built in.
 
@@ -167,7 +168,7 @@ Yes. Clicking a row opens the matching task through a local `codex://threads/<th
 
 ### Does LLM Pulse support Codex CLI, IDE tasks, cloud tasks, or other AI coding tools?
 
-No. LLM Pulse 2.0.0 currently supports local root tasks created by Codex Desktop only.
+LLM Pulse observes two runtimes: local root tasks created by Codex Desktop, and local Claude Code sessions. Swipe horizontally with two fingers, or press Control+Left/Right, to switch between them.
 
 ### Is LLM Pulse an official OpenAI product?
 

@@ -45,9 +45,9 @@ actor TaskRepository: TaskRepositoryProtocol {
         accountRateLimitObserver: (any CodexAccountRateLimitObserving)? = nil,
         agentActivityObserver: (any CodexAgentActivityObserving)? = nil,
         sqliteRefreshInterval: TimeInterval = 30,
-        runningStaleInterval: TimeInterval = 24 * 60 * 60,
-        terminalRetentionInterval: TimeInterval = 24 * 60 * 60,
-        terminalLimit: Int = 20
+        runningStaleInterval: TimeInterval = TaskRetentionPolicy.runningStale,
+        terminalRetentionInterval: TimeInterval = TaskRetentionPolicy.terminalRetention,
+        terminalLimit: Int = TaskRetentionPolicy.maximumTerminalTasks
     ) {
         self.appServerProbe = appServerProbe
         self.sqliteAdapter = sqliteAdapter
@@ -164,6 +164,35 @@ actor TaskRepository: TaskRepositoryProtocol {
 
         let (journalResult, journalHealth) = await loadPluginJournals(now: now)
         health.append(journalHealth)
+
+        // Both adapters ask `RolloutMetadataReader` what counts as a Codex
+        // Desktop root, so they blind together and cannot cross-check each
+        // other. The genuinely independent criterion is the SQL predicate:
+        // `threads.source = 'vscode'` already established these rows are
+        // desktop threads. When every one of those rows then has its rollout
+        // read successfully and declined, the two criteria contradict, which
+        // only an upstream format change explains. That is precisely the
+        // v2.0.2 signature — an empty panel reporting perfect health.
+        //
+        // Rollouts the sweep declines are deliberately not counted here. A
+        // machine is full of CLI sessions and child threads, so declining
+        // them is routine and says nothing.
+        if sqliteResult.declinedCandidateCount > 0,
+           sqliteResult.records.isEmpty,
+           rolloutResult.records.isEmpty
+        {
+            replaceHealth(
+                in: &health,
+                with: .degraded(
+                    .rolloutJSONL,
+                    message: "\(sqliteResult.declinedCandidateCount) desktop thread(s) "
+                        + "in Codex state SQLite had a readable rollout that no "
+                        + "longer matches the desktop root filter",
+                    lastSuccessAt: now,
+                    reason: .formatDrift
+                )
+            )
+        }
 
         if let sqliteNewest = sqliteResult.records.map(\.updatedAt).max(),
            let rolloutNewest = rolloutResult.records.map(\.status.updatedAt).max(),
@@ -320,7 +349,8 @@ actor TaskRepository: TaskRepositoryProtocol {
                 isUnread: isUnread,
                 tokenUsage: rolloutTokenUsageByThread[threadId]
                     ?? sqliteTokenUsageByThread[threadId],
-                agentActivity: agentActivity
+                agentActivity: agentActivity,
+                isProvisionalFailure: status.failedFromError
             ))
         }
 

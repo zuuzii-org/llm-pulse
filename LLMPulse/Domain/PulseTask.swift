@@ -17,6 +17,24 @@ struct PulseTask: Identifiable, Codable, Equatable, Sendable {
     let tokenUsage: TokenUsageSnapshot?
     let agentActivity: AgentActivityObservation?
 
+    /// True when `.failed` was inferred from an error event followed by
+    /// silence, rather than observed as a terminal event.
+    ///
+    /// Such a failure is reversible — an automatic retry writes again after
+    /// its backoff and the task returns to `.running`. The interface may show
+    /// it immediately, but anything that cannot be taken back must not act on
+    /// it. See `RolloutJSONLTailParser.reevaluate(_:fileModificationDate:now:)`.
+    let isProvisionalFailure: Bool
+
+    /// Whether this row can be reopened by URL rather than by merely bringing
+    /// its application forward.
+    ///
+    /// Not every session is safe to address directly. Resuming a Claude Code
+    /// session that was started outside the desktop app rewrites its
+    /// transcript in place, and a read-only monitor must not cause a
+    /// destructive write because someone clicked a row.
+    let supportsDeepLink: Bool
+
     var profileID: ModelProfileID { identity.profileID }
     var runtime: AIRuntimeID { identity.runtime }
     var provider: AIProviderID { identity.provider }
@@ -36,7 +54,9 @@ struct PulseTask: Identifiable, Codable, Equatable, Sendable {
         lastStatus: String,
         isUnread: Bool = false,
         tokenUsage: TokenUsageSnapshot? = nil,
-        agentActivity: AgentActivityObservation? = nil
+        agentActivity: AgentActivityObservation? = nil,
+        isProvisionalFailure: Bool = false,
+        supportsDeepLink: Bool = true
     ) {
         self.threadId = threadId
         self.turnId = turnId
@@ -59,6 +79,8 @@ struct PulseTask: Identifiable, Codable, Equatable, Sendable {
         self.isUnread = isUnread
         self.tokenUsage = tokenUsage
         self.agentActivity = agentActivity
+        self.isProvisionalFailure = state == .failed && isProvisionalFailure
+        self.supportsDeepLink = supportsDeepLink
     }
 
     var workingDirectory: String { projectDirectory }
@@ -83,7 +105,9 @@ struct PulseTask: Identifiable, Codable, Equatable, Sendable {
             lastStatus: lastStatus,
             isUnread: isUnread,
             tokenUsage: tokenUsage,
-            agentActivity: agentActivity
+            agentActivity: agentActivity,
+            isProvisionalFailure: isProvisionalFailure,
+            supportsDeepLink: supportsDeepLink
         )
     }
 

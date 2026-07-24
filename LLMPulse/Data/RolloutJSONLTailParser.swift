@@ -5,6 +5,12 @@ struct RolloutJSONLTailParser: Sendable {
     private let failureQuietPeriod: TimeInterval
     private let activeFileFreshness: TimeInterval
 
+    /// A failure inferred from a quiet error event is deliberately reversible:
+    /// the row reports `.failed` after `failureQuietPeriod`, and returns to
+    /// `.running` if the rollout grows again, because an automatic retry
+    /// writes after its backoff. `TaskStatusRecord.failedFromError` marks
+    /// those inferences so consumers that cannot take an action back — a
+    /// notification, most of all — can wait for a terminal event instead.
     init(
         maximumTailBytes: Int = 16 * 1_024 * 1_024,
         failureQuietPeriod: TimeInterval = 3,

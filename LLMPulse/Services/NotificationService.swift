@@ -935,7 +935,20 @@ enum NotificationDeliveryRetrier {
 }
 
 struct TaskNotificationTransitionTracker {
+    /// How long a provisional failure must persist before it is announced.
+    ///
+    /// A failure inferred from a quiet error event reverts the moment an
+    /// automatic retry writes again, so announcing it immediately delivers a
+    /// notification that the next poll contradicts — and a delivered
+    /// notification cannot be recalled. Waiting is the asymmetric choice:
+    /// a late failure notice costs a minute, a false one costs trust.
+    ///
+    /// The window is deliberately longer than the parser's 10 s freshness
+    /// horizon so ordinary retry backoff resolves inside it.
+    static let provisionalFailureConfirmation: TimeInterval = 60
+
     private var previousStates: [String: PulseTaskState] = [:]
+    private var provisionalFailuresSince: [String: Date] = [:]
     private var hasSeededInitialSnapshot = false
 
     mutating func notifications(
@@ -954,20 +967,47 @@ struct TaskNotificationTransitionTracker {
             }
         }
 
-        defer {
+        guard hasSeededInitialSnapshot else {
             previousStates = nextStates
             hasSeededInitialSnapshot = true
+            return []
         }
 
-        guard hasSeededInitialSnapshot else { return [] }
+        var announced: [(task: PulseTask, kind: PulseNotificationKind)] = []
+        var heldProvisionalFailures: [String: Date] = [:]
 
-        return snapshot.tasks.compactMap { task in
-            guard previousStates[task.id] != task.state,
-                  let kind = PulseNotificationKind(state: task.state) else {
-                return nil
+        for task in snapshot.tasks {
+            guard let kind = PulseNotificationKind(state: task.state) else { continue }
+            guard previousStates[task.id] != task.state else {
+                // Already announced, or still held below.
+                if let since = provisionalFailuresSince[task.id] {
+                    heldProvisionalFailures[task.id] = since
+                }
+                continue
             }
-            return (task, kind)
+
+            if task.isProvisionalFailure {
+                // The clock is the snapshot's own refresh time, so the tracker
+                // stays deterministic and needs no ambient date.
+                let since = provisionalFailuresSince[task.id] ?? snapshot.refreshedAt
+                if snapshot.refreshedAt.timeIntervalSince(since)
+                    < Self.provisionalFailureConfirmation
+                {
+                    heldProvisionalFailures[task.id] = since
+                    // Leaving the previous state in place keeps the transition
+                    // unconsumed, so it announces exactly once when the window
+                    // elapses — and never again on later refreshes.
+                    nextStates[task.id] = previousStates[task.id]
+                    continue
+                }
+            }
+
+            announced.append((task, kind))
         }
+
+        provisionalFailuresSince = heldProvisionalFailures
+        previousStates = nextStates
+        return announced
     }
 }
 

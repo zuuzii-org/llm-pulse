@@ -58,11 +58,38 @@ final class PluginEventJournalReaderTests: XCTestCase {
         XCTAssertTrue(result.records.isEmpty)
     }
 
+    /// The reader must not adopt fields the plugin cannot write.
+    ///
+    /// `Plugin/hooks/record_event.js` composes every record from a closed
+    /// whitelist, so a journal can never carry a project path. Reading one
+    /// anyway would make the privacy notice true only by accident — and a
+    /// journal planted by anything else would be trusted for it.
+    func testJournalFieldsOutsideThePluginWhitelistAreIgnored() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let journalURL = directory.appendingPathComponent("events.jsonl")
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+
+        var event = journalEvent("UserPromptSubmit", timestamp: base)
+        event["cwd"] = "/tmp/should-not-be-read"
+        try write([event], to: journalURL)
+
+        let result = try await PluginEventJournalReader(journalURL: journalURL)
+            .load(now: base.addingTimeInterval(1))
+
+        let record = try XCTUnwrap(result.records.first)
+        XCTAssertEqual(record.threadId, "thread-1")
+        XCTAssertEqual(
+            record.projectDirectory,
+            "",
+            "A project path must come from Codex's own records, never the journal."
+        )
+    }
+
     private func journalEvent(_ name: String, timestamp: Date) -> [String: Any] {
         [
             "session_id": "thread-1",
             "turn_id": "turn-1",
-            "cwd": "/tmp/project",
             "hook_event_name": name,
             "timestamp": timestamp.ISO8601Format(),
         ]

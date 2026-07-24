@@ -29,6 +29,7 @@ actor CodexAccountRateLimitObserver: CodexAccountRateLimitObserving {
     private var lastAttemptAt = Date.distantPast
     private var lastSuccessAt: Date?
     private var lastErrorMessage: String?
+    private var lastFailureReason: AdapterHealth.Reason = .unreadable
     private var refreshTask: Task<Void, Never>?
 
     init(
@@ -74,7 +75,8 @@ actor CodexAccountRateLimitObserver: CodexAccountRateLimitObserving {
                     health: .degraded(
                         .appServer,
                         message: lastErrorMessage,
-                        lastSuccessAt: lastSuccessAt
+                        lastSuccessAt: lastSuccessAt,
+                        reason: lastFailureReason
                     ),
                     fallbackAllowed: false
                 )
@@ -101,7 +103,8 @@ actor CodexAccountRateLimitObserver: CodexAccountRateLimitObserving {
             snapshot: nil,
             health: .unavailable(
                 .appServer,
-                message: lastErrorMessage ?? "Connecting to Codex account limits"
+                message: lastErrorMessage ?? "Connecting to Codex account limits",
+                reason: lastErrorMessage == nil ? .unreadable : lastFailureReason
             ),
             fallbackAllowed: lastErrorMessage != nil
         )
@@ -129,19 +132,31 @@ actor CodexAccountRateLimitObserver: CodexAccountRateLimitObserving {
         guard let weekly = snapshot.weekly,
               weekly.windowMinutes == RateLimitWindowDuration.weeklyMinutes
         else {
-            failRefresh(CodexAppServerRateLimitError.malformedResponse)
+            // The app server answered; its weekly window is simply not the
+            // one this build understands. Reporting that as "unavailable"
+            // would hide it, because an unreachable app server is a normal
+            // configuration and therefore suppressed from the interface.
+            failRefresh(
+                CodexAppServerRateLimitError.malformedResponse,
+                reason: .formatDrift
+            )
             return
         }
         cachedSnapshot = snapshot
         lastSuccessAt = snapshot.updatedAt
         lastAttemptAt = snapshot.updatedAt
         lastErrorMessage = nil
+        lastFailureReason = .unreadable
         refreshTask = nil
     }
 
-    private func failRefresh(_ error: Error) {
+    private func failRefresh(
+        _ error: Error,
+        reason: AdapterHealth.Reason = .unreadable
+    ) {
         lastAttemptAt = .now
         lastErrorMessage = error.localizedDescription
+        lastFailureReason = reason
         refreshTask = nil
     }
 }

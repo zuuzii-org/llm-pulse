@@ -4,6 +4,10 @@
 # This wrapper intentionally depends only on tools bundled with macOS.
 
 record_event() {
+    # `CDPATH=` is a one-command environment assignment, not a typo: a CDPATH
+    # inherited from the user's shell would make `cd` resolve somewhere else
+    # and print the directory it chose.
+    # shellcheck disable=SC1007
     script_directory=$(CDPATH= cd -- "$(/usr/bin/dirname -- "$0")" 2>/dev/null && pwd -P)
     [ -n "$script_directory" ] || return
     [ -r "$script_directory/record_event.js" ] || return

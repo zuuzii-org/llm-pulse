@@ -81,6 +81,25 @@ struct RolloutTaskRecord: Equatable, Sendable {
 struct SQLiteTaskReadResult: Sendable {
     let records: [CodexThreadRecord]
     let unverifiedCandidateCount: Int
+
+    /// Candidates whose rollout was read and parsed successfully, and which
+    /// the Codex Desktop root filter nevertheless declined.
+    ///
+    /// This is narrower than `unverifiedCandidateCount`, which also covers
+    /// rollouts that are missing or unreadable. Only the declined ones carry
+    /// a contradiction: the SQL predicate already established the row is a
+    /// `vscode` desktop thread, so the two criteria disagree.
+    let declinedCandidateCount: Int
+
+    init(
+        records: [CodexThreadRecord],
+        unverifiedCandidateCount: Int,
+        declinedCandidateCount: Int = 0
+    ) {
+        self.records = records
+        self.unverifiedCandidateCount = unverifiedCandidateCount
+        self.declinedCandidateCount = declinedCandidateCount
+    }
 }
 
 struct RolloutTaskReadResult: Sendable {

@@ -198,6 +198,9 @@ final class TaskPanelController: NSObject, NSWindowDelegate {
         panel.onScrollWheel = { [weak self] event in
             self?.handleModelSwipe(event) ?? false
         }
+        panel.onKeyDown = { [weak self] event in
+            self?.handleModelSelectionKey(event) ?? false
+        }
         panel.contentView = NSHostingView(rootView: rootView)
         panel.backgroundColor = .clear
         panel.isOpaque = false
@@ -484,6 +487,33 @@ final class TaskPanelController: NSObject, NSWindowDelegate {
         return result.eventDisposition == .consume
     }
 
+    /// Keyboard equivalent of the two-finger swipe.
+    ///
+    /// A trackpad gesture is unreachable without a trackpad, so switching
+    /// models has to be possible from the keyboard too. Control is the
+    /// modifier because plain arrows move focus within the list.
+    private func handleModelSelectionKey(_ event: NSEvent) -> Bool {
+        guard isModelSelectionEnabled() else { return false }
+        guard event.modifierFlags
+            .intersection(.deviceIndependentFlagsMask) == .control
+        else {
+            return false
+        }
+
+        switch event.keyCode {
+        case Self.leftArrowKeyCode:
+            onSelectAdjacentModel?(.previous)
+        case Self.rightArrowKeyCode:
+            onSelectAdjacentModel?(.next)
+        default:
+            return false
+        }
+        return true
+    }
+
+    private static let leftArrowKeyCode: UInt16 = 123
+    private static let rightArrowKeyCode: UInt16 = 124
+
     private static func swipePhase(_ phase: NSEvent.Phase) -> HorizontalModelSwipeSample.Phase {
         if phase.contains(.began) { return .began }
         if phase.contains(.changed) { return .changed }
@@ -496,6 +526,7 @@ final class TaskPanelController: NSObject, NSWindowDelegate {
 private final class PulsePanel: NSPanel {
     var onCancel: (() -> Void)?
     var onScrollWheel: ((NSEvent) -> Bool)?
+    var onKeyDown: ((NSEvent) -> Bool)?
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
@@ -507,5 +538,10 @@ private final class PulsePanel: NSPanel {
     override func scrollWheel(with event: NSEvent) {
         if onScrollWheel?(event) == true { return }
         super.scrollWheel(with: event)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if onKeyDown?(event) == true { return }
+        super.keyDown(with: event)
     }
 }

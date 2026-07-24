@@ -447,6 +447,16 @@ struct TaskSidebarView: View {
         .padding(.vertical, 7)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(PulseL10n.text("模型", language: settings.appLanguage))
+        // A trackpad gesture is invisible until someone tries it, and the
+        // keyboard route is the only one available without a trackpad.
+        .help(PulseL10n.text(
+            "双指左右滑动，或按 Control+←/→ 切换模型",
+            language: settings.appLanguage
+        ))
+        .accessibilityHint(PulseL10n.text(
+            "双指左右滑动，或按 Control 加左右方向键切换模型",
+            language: settings.appLanguage
+        ))
     }
 
     private func announceModelPageChange(
@@ -901,7 +911,7 @@ struct TaskSidebarView: View {
     }
 
     private func projectAccessibilityName(_ task: PulseTask) -> String {
-        let displayName = task.projectDisplayName
+        let displayName = task.projectDisplayName(language: settings.appLanguage)
         let identity = task.projectIdentityDirectory
         guard !identity.isEmpty else { return displayName }
 
@@ -1132,6 +1142,8 @@ private struct ProjectScopeBar: View {
 }
 
 private struct ModelUsageCard: View {
+    @Environment(\.pulseLanguage) private var language
+
     let identity: ModelIdentity
     let usage: ModelUsageSnapshot?
 
@@ -1154,7 +1166,7 @@ private struct ModelUsageCard: View {
                         .foregroundStyle(.secondary)
                 }
             } else {
-                Text(PulseL10n.text("待刷新", language: .system))
+                Text(PulseL10n.text("待刷新", language: language))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

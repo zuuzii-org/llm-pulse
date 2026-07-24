@@ -4,12 +4,14 @@ struct AIRuntimeID: RawRepresentable, Hashable, Codable, Sendable {
     let rawValue: String
     init(rawValue: String) { self.rawValue = rawValue }
     static let codexDesktop = AIRuntimeID(rawValue: "codex-desktop")
+    static let claudeDesktop = AIRuntimeID(rawValue: "claude-desktop")
 }
 
 struct AIProviderID: RawRepresentable, Hashable, Codable, Sendable {
     let rawValue: String
     init(rawValue: String) { self.rawValue = rawValue }
     static let openAI = AIProviderID(rawValue: "openai")
+    static let anthropic = AIProviderID(rawValue: "anthropic")
 }
 
 struct ModelPlanKind: RawRepresentable, Hashable, Codable, Sendable {
@@ -43,6 +45,13 @@ struct ModelProfileID: RawRepresentable, Hashable, Codable, Sendable {
         modelID: "codex"
     )
 
+    static let claudeCode = ModelProfileID(
+        runtime: .claudeDesktop,
+        provider: .anthropic,
+        planKind: nil,
+        modelID: "claude-code"
+    )
+
     func isConsistent(
         runtime: AIRuntimeID,
         provider: AIProviderID,
@@ -58,6 +67,11 @@ struct ModelProfileID: RawRepresentable, Hashable, Codable, Sendable {
             return provider == .openAI
                 && normalizedModelID == "codex"
                 && self == .codex
+        }
+        if runtime == .claudeDesktop {
+            return provider == .anthropic
+                && normalizedModelID == "claude-code"
+                && self == .claudeCode
         }
         let components = rawValue.split(separator: ":", omittingEmptySubsequences: false)
         guard components.count == 3 else { return false }
@@ -107,6 +121,15 @@ struct ModelIdentity: Equatable, Codable, Sendable {
                 return nil
             }
         }
+        if runtime == .claudeDesktop {
+            // Claude Code exposes one profile. The model actually answering a
+            // turn varies within a single session, so it is not an identity.
+            guard provider == .anthropic,
+                  normalizedModelID == "claude-code",
+                  planKind == nil else {
+                return nil
+            }
+        }
 
         self.runtime = runtime
         self.provider = provider
@@ -126,6 +149,13 @@ struct ModelIdentity: Equatable, Codable, Sendable {
         provider: .openAI,
         modelID: "codex",
         displayName: "Codex"
+    )!
+
+    static let claudeCode = ModelIdentity(
+        runtime: .claudeDesktop,
+        provider: .anthropic,
+        modelID: "claude-code",
+        displayName: "Claude Code"
     )!
 
     static func isSafeIdentifier(_ value: String) -> Bool {

@@ -1,0 +1,252 @@
+import Foundation
+
+/// Composes Claude Code's session registry and transcripts into a snapshot.
+///
+/// Mirrors `TaskRepository`: `snapshot(now:)` never throws, and every failure
+/// becomes an `AdapterHealth` entry instead. A monitor that disappears when a
+/// source misbehaves is worse than one that says so.
+actor ClaudeTaskRepository {
+    private let registryReader: ClaudeSessionRegistryReader
+    private let transcriptAdapter: ClaudeTranscriptAdapter
+    private let agentObserver: ClaudeAgentActivityObserver
+    private let paths: ClaudePaths
+    private let runningStaleInterval: TimeInterval
+    private let terminalRetentionInterval: TimeInterval
+
+    /// Consecutive unreadable polls a registry entry survives.
+    ///
+    /// The app rewrites these files in place, so a read can legitimately come
+    /// back empty. Dropping a row on the first failure would make live
+    /// sessions blink out at random.
+    private static let registryFailureTolerance = 3
+
+    private var lastEntries: [ClaudeSessionRegistryEntry] = []
+    private var consecutiveRegistryFailures = 0
+
+    init(
+        paths: ClaudePaths,
+        probe: any ClaudeProcessProbing = LibprocProcessProbe(),
+        tailParser: ClaudeTranscriptTailParser = ClaudeTranscriptTailParser(),
+        discoveryInterval: TimeInterval = 5,
+        runningStaleInterval: TimeInterval = TaskRetentionPolicy.runningStale,
+        terminalRetentionInterval: TimeInterval = TaskRetentionPolicy.terminalRetention
+    ) {
+        registryReader = ClaudeSessionRegistryReader(
+            sessionsDirectory: paths.sessionsDirectory,
+            probe: probe
+        )
+        transcriptAdapter = ClaudeTranscriptAdapter(
+            paths: paths,
+            tailParser: tailParser,
+            discoveryInterval: discoveryInterval
+        )
+        agentObserver = ClaudeAgentActivityObserver()
+        self.paths = paths
+        self.runningStaleInterval = runningStaleInterval
+        self.terminalRetentionInterval = terminalRetentionInterval
+    }
+
+    func snapshot(now: Date = .now) async -> TaskSnapshot {
+        var health: [AdapterHealth] = []
+
+        let entries: [ClaudeSessionRegistryEntry]
+        do {
+            let result = try registryReader.read()
+            if result.unreadableFileCount > 0 {
+                consecutiveRegistryFailures += 1
+                health.append(.degraded(
+                    .claudeSessionRegistry,
+                    message: "\(result.unreadableFileCount) session file(s) were "
+                        + "being rewritten while they were read",
+                    lastSuccessAt: now
+                ))
+                entries = consecutiveRegistryFailures < Self.registryFailureTolerance
+                    ? mergedEntries(fresh: result.entries)
+                    : result.entries
+            } else {
+                consecutiveRegistryFailures = 0
+                entries = result.entries
+                health.append(.healthy(.claudeSessionRegistry, at: now))
+            }
+            lastEntries = entries
+        } catch {
+            entries = []
+            lastEntries = []
+            health.append(.unavailable(
+                .claudeSessionRegistry,
+                message: safeMessage(for: error)
+            ))
+        }
+
+        let liveSessionIDs = Set(entries.map(\.sessionID))
+        let entriesBySession = Dictionary(
+            entries.map { ($0.sessionID, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        let readResult: ClaudeTaskReadResult
+        do {
+            readResult = try await transcriptAdapter.loadTasks(
+                liveSessionIDs: liveSessionIDs,
+                now: now
+            )
+            if readResult.missingTranscriptCount > 0 {
+                // The registry proves these sessions are running, so having no
+                // transcript for them means the layout moved rather than that
+                // nothing is happening.
+                health.append(.degraded(
+                    .claudeTranscript,
+                    message: "\(readResult.missingTranscriptCount) live session(s) "
+                        + "have no transcript at the expected location",
+                    lastSuccessAt: now,
+                    reason: .formatDrift
+                ))
+            } else if readResult.invalidFileCount > 0 {
+                health.append(.degraded(
+                    .claudeTranscript,
+                    message: "\(readResult.invalidFileCount) transcript(s) could not be read",
+                    lastSuccessAt: now
+                ))
+            } else {
+                health.append(.healthy(.claudeTranscript, at: now))
+            }
+        } catch {
+            readResult = ClaudeTaskReadResult(
+                records: [],
+                invalidFileCount: 0,
+                missingTranscriptCount: 0
+            )
+            health.append(.unavailable(
+                .claudeTranscript,
+                message: safeMessage(for: error)
+            ))
+        }
+
+        let tasks = await makeTasks(
+            from: readResult.records,
+            entriesBySession: entriesBySession,
+            now: now
+        )
+
+        return TaskSnapshot(
+            tasks: tasks,
+            refreshedAt: now,
+            health: health,
+            rateLimits: nil
+        )
+    }
+
+    // MARK: - Composition
+
+    private func makeTasks(
+        from records: [ClaudeTranscriptTaskRecord],
+        entriesBySession: [String: ClaudeSessionRegistryEntry],
+        now: Date
+    ) async -> [PulseTask] {
+        var tasks: [PulseTask] = []
+
+        for record in records {
+            let entry = entriesBySession[record.sessionID]
+            let status = clamped(record.status, isLive: entry != nil)
+
+            if status.isStaleRunning(at: now, cutoff: runningStaleInterval) { continue }
+            if status.state.isTerminal {
+                let completedAt = status.completedAt ?? status.updatedAt
+                guard now.timeIntervalSince(completedAt) <= terminalRetentionInterval else {
+                    continue
+                }
+            }
+
+            let agentActivity = await agentObserver.observation(
+                sidecarDirectory: paths.sidecarDirectory(
+                    forTranscript: record.transcriptURL
+                ),
+                isRootActive: !status.state.isTerminal,
+                now: now
+            )
+
+            tasks.append(PulseTask(
+                threadId: record.sessionID,
+                turnId: nil,
+                identity: .claudeCode,
+                sessionID: record.sessionID,
+                title: title(for: record, entry: entry),
+                projectDirectory: entry?.workingDirectory
+                    ?? Self.projectDirectory(forTranscript: record.transcriptURL),
+                state: status.state,
+                startedAt: status.startedAt,
+                updatedAt: status.updatedAt,
+                completedAt: status.completedAt,
+                lastStatus: status.lastStatus,
+                tokenUsage: record.tokenUsage,
+                agentActivity: agentActivity,
+                supportsDeepLink: entry?.isDesktopEntrypoint ?? false
+            ))
+        }
+
+        return tasks.sorted { lhs, rhs in
+            if lhs.updatedAt != rhs.updatedAt { return lhs.updatedAt > rhs.updatedAt }
+            return lhs.id < rhs.id
+        }
+    }
+
+    /// Forces a row with no live process into a terminal state.
+    ///
+    /// A transcript keeps whatever state it last implied, so a session killed
+    /// mid-turn would otherwise claim to be running forever. An interruption
+    /// or a failure is preserved, because those are evidence rather than an
+    /// absence of it.
+    private func clamped(_ status: TaskStatusRecord, isLive: Bool) -> TaskStatusRecord {
+        guard !isLive, !status.state.isTerminal else { return status }
+        return TaskStatusRecord(
+            threadId: status.threadId,
+            turnId: status.turnId,
+            state: .completed,
+            startedAt: status.startedAt,
+            updatedAt: status.updatedAt,
+            completedAt: status.latestActivityAt ?? status.updatedAt,
+            lastStatus: PulseTaskState.completed.rawValue,
+            latestActivityAt: status.latestActivityAt,
+            tokenUsage: status.tokenUsage
+        )
+    }
+
+    private func title(
+        for record: ClaudeTranscriptTaskRecord,
+        entry: ClaudeSessionRegistryEntry?
+    ) -> String {
+        if let name = entry?.name, !name.isEmpty { return name }
+        let directory = entry?.workingDirectory
+            ?? Self.projectDirectory(forTranscript: record.transcriptURL)
+        let lastComponent = URL(fileURLWithPath: directory).lastPathComponent
+        return lastComponent.isEmpty ? "Claude Code session" : lastComponent
+    }
+
+    /// Only a live registry entry carries a real working directory.
+    ///
+    /// The project directory name cannot be decoded back into a path, so a
+    /// history row is left without one rather than showing a guess.
+    private static func projectDirectory(forTranscript url: URL) -> String {
+        ""
+    }
+
+    private func mergedEntries(
+        fresh: [ClaudeSessionRegistryEntry]
+    ) -> [ClaudeSessionRegistryEntry] {
+        var merged = fresh
+        let freshIDs = Set(fresh.map(\.sessionID))
+        for entry in lastEntries where !freshIDs.contains(entry.sessionID) {
+            merged.append(entry)
+        }
+        return merged
+    }
+
+    private func safeMessage(for error: Error) -> String {
+        if let localizedError = error as? LocalizedError,
+           let description = localizedError.errorDescription
+        {
+            return description
+        }
+        return "Claude Code data is unavailable"
+    }
+}

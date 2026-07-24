@@ -3,8 +3,10 @@
 set -Eeuo pipefail
 umask 077
 
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+readonly REPO_ROOT
 readonly PROJECT_FILE="$REPO_ROOT/LLMPulse.xcodeproj"
 readonly PROJECT_SPEC="$REPO_ROOT/project.yml"
 readonly INFO_PLIST="$REPO_ROOT/LLMPulse/Resources/Info.plist"
@@ -250,6 +252,55 @@ parse_arguments() {
   done
 }
 
+# Sparkle only offers an update when the feed advertises a build higher than
+# the installed one. A build number that has already shipped therefore fails
+# silently: the release signs, notarizes, and publishes cleanly, and no user is
+# ever offered it. Nothing downstream can detect that, so it has to be caught
+# before anything is built.
+#
+# Released builds are read from the tags themselves rather than a changelog, so
+# the check cannot drift from what was actually shipped, and needs no network.
+highest_released_build() {
+  local highest=0 tag build plist_path
+
+  while IFS= read -r tag; do
+    [[ -n "$tag" ]] || continue
+    # Re-running a release for the version being prepared is legitimate.
+    [[ "$tag" == "v$VERSION" ]] && continue
+    # The bundle directory has been renamed once already, so the plist is
+    # located within each tag rather than assumed.
+    while IFS= read -r plist_path; do
+      [[ -n "$plist_path" ]] || continue
+      build="$(git -C "$REPO_ROOT" show "$tag:$plist_path" 2>/dev/null \
+        | /usr/bin/plutil -extract CFBundleVersion raw -o - - 2>/dev/null)" || continue
+      [[ "$build" =~ ^[0-9]+$ ]] || continue
+      if (( build > highest )); then
+        highest="$build"
+      fi
+    done < <(git -C "$REPO_ROOT" ls-tree -r --name-only "$tag" 2>/dev/null \
+      | /usr/bin/grep -E '(^|/)Resources/Info\.plist$' || true)
+  done < <(git -C "$REPO_ROOT" tag --list 'v*')
+
+  printf '%s' "$highest"
+}
+
+validate_build_number_is_new() {
+  local highest
+  highest="$(highest_released_build)"
+
+  if (( highest == 0 )); then
+    warn "no released build number found in git tags; skipping monotonicity check"
+    return 0
+  fi
+
+  (( SOURCE_BUILD > highest )) || die \
+    "CFBundleVersion $SOURCE_BUILD is not greater than the highest released build $highest. \
+Sparkle would publish this release and never offer it to anyone. \
+Raise CFBundleVersion in $INFO_PLIST."
+
+  log "CFBundleVersion $SOURCE_BUILD is ahead of the highest released build $highest"
+}
+
 initialize_paths() {
   local source_version
   source_version="$(/usr/bin/plutil -extract CFBundleShortVersionString raw -o - "$INFO_PLIST")"
@@ -263,6 +314,7 @@ initialize_paths() {
   [[ "$SOURCE_BUILD" =~ ^[0-9]+$ ]] || die "CFBundleVersion must be an integer"
   (( SOURCE_BUILD > SPARKLE_BRIDGE_BUILD )) || \
     die "CFBundleVersion must be greater than bridge build $SPARKLE_BRIDGE_BUILD"
+  validate_build_number_is_new
 
   if [[ -z "$OUTPUT_DIR" ]]; then
     OUTPUT_DIR="$REPO_ROOT/dist"
@@ -353,8 +405,16 @@ validate_options() {
         die "Sparkle private key must not be stored in a cloud-synchronized directory"
         ;;
     esac
-    [[ -f "$SPARKLE_PRIVATE_KEY_FILE" ]] || \
-      die "Sparkle private-key file not found: $SPARKLE_PRIVATE_KEY_FILE"
+    # The path policy above is pure validation and always runs. Only the
+    # existence check is skipped for a dry run, so a rehearsal can exercise
+    # every other preflight on a machine that holds no signing secrets —
+    # which is the only way CI can reach this code at all.
+    if is_true "$DRY_RUN"; then
+      log "[dry-run] skip private-key existence check for $SPARKLE_PRIVATE_KEY_FILE"
+    else
+      [[ -f "$SPARKLE_PRIVATE_KEY_FILE" ]] || \
+        die "Sparkle private-key file not found: $SPARKLE_PRIVATE_KEY_FILE"
+    fi
   elif [[ -n "$SPARKLE_PRIVATE_KEY_FILE" ]]; then
     die "SPARKLE_PRIVATE_KEY_FILE cannot be set when SPARKLE_KEY_SOURCE=keychain"
   fi
@@ -1210,7 +1270,8 @@ verify_appcast() {
 
 generate_and_verify_appcast() {
   local source_dir="$WORK_DIR/appcast-source"
-  local source_dmg="$source_dir/$(basename "$DMG_PATH")"
+  local source_dmg
+  source_dmg="$source_dir/$(basename "$DMG_PATH")"
   local source_notes="$source_dir/LLM-Pulse-$VERSION.md"
   local generated_current_appcast="$source_dir/current-appcast.xml"
   local generated_appcast="$source_dir/appcast.xml"
@@ -1427,4 +1488,8 @@ main() {
   log "release stage completed successfully"
 }
 
-main "$@"
+# Only run when executed. Sourcing exposes the individual functions so release
+# logic can be tested without building, signing, or publishing anything.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi

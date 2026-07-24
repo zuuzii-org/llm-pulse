@@ -348,8 +348,11 @@ final class JSONAppBundleNameMigrationJournalStore: AppBundleNameMigrationJourna
 @MainActor
 final class WorkspaceAppBundleNameMigrationRelauncher: AppBundleNameMigrationRelaunching {
     func relaunchApplication(at url: URL) async throws {
+        // No launch argument marks the relaunch. `run()` branches on the
+        // bundle filename, which the migration has already changed, so the
+        // relaunched instance takes the completion path on its own. An
+        // argument would only imply a handshake that nothing reads.
         let configuration = NSWorkspace.OpenConfiguration()
-        configuration.arguments = ["--complete-app-bundle-name-migration"]
         configuration.createsNewApplicationInstance = true
 
         let _: Void = try await withCheckedThrowingContinuation { continuation in

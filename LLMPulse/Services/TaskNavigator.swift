@@ -4,11 +4,23 @@ import Foundation
 @MainActor
 final class TaskNavigator {
     typealias OpenHandler = @MainActor (URL) -> Bool
+    typealias ActivateHandler = @MainActor (String) -> Bool
 
     private let openHandler: OpenHandler
+    private let activateHandler: ActivateHandler
 
-    init(openHandler: @escaping OpenHandler = { NSWorkspace.shared.open($0) }) {
+    init(
+        openHandler: @escaping OpenHandler = { NSWorkspace.shared.open($0) },
+        activateHandler: @escaping ActivateHandler = { bundleIdentifier in
+            let running = NSRunningApplication.runningApplications(
+                withBundleIdentifier: bundleIdentifier
+            )
+            guard let application = running.first else { return false }
+            return application.activate(options: [])
+        }
+    ) {
         self.openHandler = openHandler
+        self.activateHandler = activateHandler
     }
 
     @discardableResult
@@ -23,10 +35,30 @@ final class TaskNavigator {
             runtime: task.runtime,
             provider: task.provider,
             modelID: task.modelID
-        ), task.runtime == .codexDesktop else {
+        ) else {
             return false
         }
-        return open(threadID: task.threadId)
+
+        switch task.runtime {
+        case .codexDesktop:
+            return open(threadID: task.threadId)
+
+        case .claudeDesktop:
+            // A malformed identifier makes the receiving handler bail out
+            // before it shows anything, so the click would silently do
+            // nothing. Bringing the app forward is a worse outcome than a
+            // direct jump, but it is never a no-op.
+            if task.supportsDeepLink,
+               let url = ClaudeDeepLink.resumeURL(sessionID: task.sessionID),
+               openHandler(url)
+            {
+                return true
+            }
+            return activateHandler(ClaudeDeepLink.desktopBundleIdentifier)
+
+        default:
+            return false
+        }
     }
 
     static func taskURL(threadID: String) -> URL? {

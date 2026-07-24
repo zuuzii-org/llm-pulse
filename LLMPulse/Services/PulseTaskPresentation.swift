@@ -191,6 +191,12 @@ extension AdapterHealth {
     }
 
     func displayMessage(language: AppLanguage) -> String {
+        if reason == .formatDrift {
+            return PulseL10n.text(
+                "Codex 数据格式可能已更新，部分任务无法识别",
+                language: language
+            )
+        }
         switch adapter {
         case .appServer:
             return PulseL10n.text(
@@ -210,6 +216,12 @@ extension AdapterHealth {
             return PulseL10n.text("未查看状态暂时无法保存", language: language)
         case .runtimeSource:
             return PulseL10n.text("模型数据源暂不可用", language: language)
+        case .claudeSessionRegistry:
+            return PulseL10n.text("无法读取 Claude Code 会话列表", language: language)
+        case .claudeTranscript:
+            return PulseL10n.text("无法读取 Claude Code 任务记录", language: language)
+        case .claudeAgentJournal:
+            return PulseL10n.text("Claude Code 子 Agent 记录尚未生成", language: language)
         }
     }
 }

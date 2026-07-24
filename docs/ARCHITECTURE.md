@@ -2,14 +2,14 @@
 
 ## 目标与产品边界
 
-LLM Pulse 面向单机、单用户的本机 Codex Desktop 根任务。核心约束是：状态尽可能及时且可解释，所有任务数据留在本机，并且绝不修改 Codex 的持久化任务数据。
+LLM Pulse 面向单机、单用户的本机编码 agent 任务。核心约束是：状态尽可能及时且可解释，所有任务数据留在本机，并且绝不修改任何被观测工具的持久化数据。
 
-当前产品只注册 Codex 数据源。领域层继续保留 runtime、provider、profile 和 source-set 等通用抽象，便于隔离数据源故障与未来演进；这些内部扩展点不代表当前版本支持其他运行工具，也不进入用户功能宣传。
+当前注册两个运行时 source：**Codex Desktop** 与 **Claude Code**。两者各自独立超时，一个不可用不会拖住另一个。用户通过双指左右滑动或 `Control+←/→` 在模型页之间切换（`HorizontalModelSwipeState` + `ModelSelectionStore`），菜单栏计数始终是全局汇总。
 
 ## 数据流
 
 1. `TaskMonitor` 定时请求 `PulseHubRepository` 刷新已注册的物理 source。
-2. 当前唯一生产 source 是 Codex source。它组合本机 App Server、可选 Codex plugin journal、read-only SQLite、rollout JSONL 与 Agent 观察器。
+2. Codex source 组合本机 App Server、可选 Codex plugin journal、read-only SQLite、rollout JSONL 与 Agent 观察器；Claude source 组合会话注册表、转录 JSONL 与 workflow journal。
 3. source 先形成经过一致性验证的任务与用量快照，Hub 再应用已查看回执、保留策略和全局汇总。
 4. `ReceiptStore` 只在 LLM Pulse 自有数据库中保存已查看回执，并执行 owner、文件类型、link count 与 `SQLITE_OPEN_NOFOLLOW` 校验。
 5. UI、通知和导航只依赖领域快照，不直接读取 SQLite、JSONL 或 journal。
@@ -17,6 +17,19 @@ LLM Pulse 面向单机、单用户的本机 Codex Desktop 根任务。核心约�
 单次刷新必须原子发布：不允许把不同刷新代次的任务、Agent 或用量字段拼成一个看似完整的结果。任一 adapter 暂时失败时，按其健康状态降级或保留仍可信的最近值，不写入或修复 Codex 文件。
 
 ## Codex 数据源
+
+### 什么算一个 Codex Desktop 根任务
+
+这是整个 Codex 侧最关键、也最容易随上游变动的判定，由 `RolloutMetadataReader.readDesktopRoot` 单点持有。rollout 首行必须是 `session_meta`，且其 payload 满足全部条件：
+
+- `originator` ∈ {`Codex Desktop`, `codex_work_desktop`}
+- `source == "vscode"`
+- 若存在 `thread_source`，则必须为 `user`（字段缺失是允许的）
+- `parent_thread_id` 为空（排除子线程）
+
+不满足时读取器返回 `nil` 而非报错——绝大多数被拒绝的 rollout 是正常的 CLI 会话或子线程。
+
+**漂移检测。** 由于 `CodexSQLiteTaskAdapter` 复用同一个读取器做行校验，两个适配器会同时失明，因此它们无法互为佐证。真正独立的判据是 SQL 谓词 `threads.source = 'vscode'`：当 SQL 认定存在 desktop 线程、其 rollout 文件读取成功却全部被根过滤器拒绝、且最终没有产出任何任务时，二者矛盾，只能用上游格式变更解释。此时发出 `AdapterHealth.Reason.formatDrift`，该 reason 豁免可选数据源的静默抑制，必定对用户可见。这正是 v2.0.2 那个「空面板 + 全部健康」缺陷的形态。
 
 ### App Server
 
@@ -33,6 +46,41 @@ rollout parser 只提取状态、时间、Agent 生命周期、token 数值和�
 ### 可选 Codex plugin journal
 
 Codex plugin journal 只写 `session_id`、`turn_id`、`hook_event_name` 和 `timestamp`。写入发生在 LLM Pulse 自有目录的 owner-only 互斥边界内；journal 事件必须先与已验证的 Codex Desktop thread 对齐，不能仅凭陌生 ID 创建任务。
+
+## Claude Code 数据源
+
+### 存活判定
+
+Claude 侧的证据比 Codex 更硬：`~/.claude/sessions/<pid>.json` 以进程号为文件名，会话存在等价于进程存在。判定按序进行，任一失败即视为「未运行」：
+
+1. 文件名匹配 `^\d+\.json$`，且内容中的 `pid` 与文件名一致
+2. `kind == "interactive"`（后台与守护会话不在产品范围内）
+3. `kill(pid, 0)` 成功——`EPERM` 也判定为死，同 uid 下 0700 目录里出现权限拒绝只能意味着 pid 已被复用
+4. `proc_pidinfo` 可读且 `pbi_status != SZOMB`——僵尸进程的启动时间按定义与注册表一致，只有状态位能识别它
+5. `proc_pidpath` 指向 claude 可执行文件本身。**不使用命令行匹配**：把 claude 路径作为参数传入的包装进程在 `ps` 下看起来完全一样
+6. 注册表 `startedAt` 与内核报告的进程启动时间一致（防 pid 复用）
+
+全程不 fork `ps`：libproc 快数个量级，且彻底消除了解析本地化时间字符串这一整类缺陷。
+
+**撕裂读取。** 该文件被原地重写且无 temp+rename，因此读到空内容是常态而非会话结束。读取器单独上报 `unreadableFileCount`，连续 3 次失败后才移除行，避免运行中的行随机闪断。
+
+### 转录与状态
+
+转录位于 `~/.claude/projects/<encoded-cwd>/<sessionID>.jsonl`。目录名是工作目录的**有损**编码（分隔符、下划线、点与字面量连字符都塌缩为 `-`），因此**绝不反解**；改为枚举 `projects/` 建立 sessionID → 文件 的精确索引，同一次扫描也顺带发现进程已退出的历史会话。
+
+状态按优先级：显式失败 > 待回答（未完成的 `AskUserQuestion`）> 待授权（未完成的 `ExitPlanMode`）> 存在未完成 `tool_use` > 队列中有待处理提示 > 距最近活动不足 `idleGrace`（90s）> 已完成。
+
+三点值得注意：
+
+- **`idleGrace` 必须足够长。** 整条 assistant 消息只在完成后一次性落盘，单个工具调用可以让文件静默很久。窗口过短会让工作中的会话在消息中途反复闪烁。
+- **待授权对话框与长时间运行的工具在磁盘上完全无法区分**，对话框打开期间不写入任何内容。安全方向是报告为运行中。
+- **时间戳不单调**，最近活动取解析到的最大值，而非最后一行的值；「最后一条记录」由物理位置决定，时间戳只用于计算年龄。
+
+无对应存活进程的转录被钳制为终态：运行中/等待类一律转 `completed`，而 `interrupted`/`failed` 予以保留——后者是真实证据，前者只是证据缺失。否则每个被强杀的会话都会变成永久的幽灵行。
+
+### 不提供额度卡片
+
+Claude 侧**不显示**周额度。百分比可以只读获得，重置时间不能：桌面应用刻意不持久化 `resets_at`。而现有 `RateLimitSnapshot` 契约要求三者齐全，放宽它会削弱 Codex 侧的保证。呈现一个外观与 Codex 相同却没有重置时间的卡片，会诱导读者假定相同的窗口语义。每会话 token 用量照常提供，且与 Codex 口径一致（缓存计入 input）。
 
 ## 状态归并
 
@@ -120,4 +168,29 @@ Codex hooks 暂无单独的 approval-resolved 事件。`PermissionRequest` 后�
 
 ## 通用领域底座
 
-`ModelIdentity`、`ModelTaskSnapshot`、`PulseHubSnapshot` 和 source-set 协议保持来源无关，以便测试隔离、故障边界和未来维护。当前生产配置只创建 Codex identity 和 Codex source；UI、菜单、通知与公开文档均以单一 Codex 产品合同为准。新增任何其他 source 必须重新经过明确的产品决策、隐私审查、真实数据验证和发布门禁，不能仅凭底座存在而自动启用。
+`ModelIdentity`、`ModelTaskSnapshot`、`PulseHubSnapshot` 和 source-set 协议保持来源无关，以便测试隔离、故障边界和未来维护。生产配置注册 Codex 与 Claude Code 两个 source。新增任何其他 source 必须重新经过明确的产品决策、隐私审查、真实数据验证和发布门禁，不能仅凭底座存在而自动启用。
+
+## 本地开发
+
+应用的全部数据来自两个工具的私有目录，没有 mock 后端，空数据下就是一个空面板。以下是全仓**仅有的**运行时注入点：
+
+| 开关 | 作用 |
+| --- | --- |
+| `CODEX_HOME` | 改写 Codex 数据根（`CodexPaths.live(environment:)`） |
+| `CLAUDE_CONFIG_DIR` | 改写 Claude 数据根（`ClaudePaths.live(environment:)`） |
+| `--show-panel-for-ui-test` | DEBUG 构建：直接展开面板并关闭自动消失（`AppCoordinator`） |
+| `LLM_PULSE_RUN_LIVE_SMOKE=1` | 打开两个真机烟测；它们读真实数据，但把回执重定向到临时目录 |
+| `LLM_PULSE_RENDER_QA_PATH` / `LLM_PULSE_STATUS_ITEM_QA_PATH` | 两个渲染测试输出 PNG 的位置 |
+
+造假数据树的配方可直接抄测试：Codex 侧见 `CodexSQLiteTaskAdapterTests`（DDL，库名必须匹配 `state_<Int>.sqlite`）与 `TaskRepositoryTests.writeRunningRollout`（`session_meta` 最小形状；`originator` 与 `source` 不对会被静默拒绝）；Claude 侧见 `ClaudeTaskRepositoryTests.Tree`。
+
+```bash
+CODEX_HOME=/tmp/fake-codex CLAUDE_CONFIG_DIR=/tmp/fake-claude \
+  open ".build/DerivedData/Build/Products/Debug/LLM Pulse.app" --args --show-panel-for-ui-test
+```
+
+真机烟测（只读，不污染已读状态）：
+
+```bash
+TEST_RUNNER_LLM_PULSE_RUN_LIVE_SMOKE=1 make test-swift
+```

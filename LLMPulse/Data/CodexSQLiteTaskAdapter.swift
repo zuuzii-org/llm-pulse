@@ -110,6 +110,7 @@ struct CodexSQLiteTaskAdapter: Sendable {
 
         var records: [CodexThreadRecord] = []
         var unverifiedCandidateCount = 0
+        var declinedCandidateCount = 0
 
         try connection.withStatement(sql) { statement in
             while true {
@@ -129,14 +130,23 @@ struct CodexSQLiteTaskAdapter: Sendable {
 
                 let rolloutURL = URL(fileURLWithPath: rolloutPath)
                 let verifiedMetadata: RolloutMetadata?
+                // A `nil` return means the rollout was read and parsed, and
+                // the desktop root filter declined it anyway. A throw means
+                // it could not be read at all. Only the former contradicts
+                // the SQL predicate that selected this row.
+                var wasDeclinedByFilter = false
                 do {
                     verifiedMetadata = try metadataReader.readDesktopRoot(from: rolloutURL)
+                    wasDeclinedByFilter = verifiedMetadata == nil
                 } catch {
                     verifiedMetadata = nil
                 }
 
                 guard let verifiedMetadata, verifiedMetadata.threadId == threadId else {
                     unverifiedCandidateCount += 1
+                    if wasDeclinedByFilter {
+                        declinedCandidateCount += 1
+                    }
                     continue
                 }
 
@@ -166,7 +176,8 @@ struct CodexSQLiteTaskAdapter: Sendable {
 
         return SQLiteTaskReadResult(
             records: records,
-            unverifiedCandidateCount: unverifiedCandidateCount
+            unverifiedCandidateCount: unverifiedCandidateCount,
+            declinedCandidateCount: declinedCandidateCount
         )
     }
 

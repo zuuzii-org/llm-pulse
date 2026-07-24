@@ -19,11 +19,27 @@ jobs:
       - name: Scan current identity files
         run: make check-brand
 
+  check-shell:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # The release pipeline is over 1400 lines of bash whose failure modes are
+      # expensive and late. It currently reports zero findings at the strictest
+      # level, so the baseline is kept at zero rather than allowed to grow.
+      - name: Lint shell scripts
+        run: shellcheck --severity=style --format=gcc scripts/*.sh Plugin/hooks/*.sh
+
   macos-check:
     runs-on: macos-15
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          # `validate_build_number_is_new` reads shipped build numbers out of
+          # the release tags, so a shallow clone would silently skip the check.
+          fetch-depth: 0
 
       - name: Install pinned XcodeGen
         run: |
@@ -39,13 +55,29 @@ jobs:
         run: |
           test "$(xcodegen --version)" = "Version: 2.45.4"
 
-      - name: Run brand, Swift, plugin, release-tool, and Debug build checks
+      - name: Run brand, Swift, plugin, release-tool, localization, and Debug build checks
         run: make check
 
       - name: Reject generated project drift
         run: |
           xcodegen generate
           git diff --exit-code -- LLMPulse.xcodeproj
+
+      # Everything below the build — signing order, Sparkle XPC stripping, DMG
+      # layout, the two-hop appcast, EdDSA verification — used to be exercised
+      # for the first time on release day, on one laptop. A dry run executes no
+      # mutating command and needs no signing secrets, so every preflight and
+      # every stage ordering check can run here instead.
+      - name: Rehearse the release pipeline
+        env:
+          DRY_RUN: "1"
+          # Skips the keychain lookup; nothing is signed during a dry run.
+          SIGNING_IDENTITY: dry-run-placeholder
+        run: |
+          bash scripts/release.sh \
+            --stage all \
+            --allow-dirty \
+            --output-dir "$RUNNER_TEMP/release-rehearsal"
 
       - name: Build Universal Release
         run: |
