@@ -535,13 +535,25 @@ private final class PulsePanel: NSPanel {
         onCancel?()
     }
 
-    override func scrollWheel(with event: NSEvent) {
-        if onScrollWheel?(event) == true { return }
-        super.scrollWheel(with: event)
-    }
-
-    override func keyDown(with event: NSEvent) {
-        if onKeyDown?(event) == true { return }
-        super.keyDown(with: event)
+    /// Model switching is claimed before the event reaches any view.
+    ///
+    /// The task list is a scroll view covering most of the panel, and a
+    /// scroll view consumes scroll events on both axes. Handling these in
+    /// `scrollWheel` — which only sees what the responder chain declined —
+    /// meant the gesture worked in the header and nowhere else. `sendEvent`
+    /// runs before dispatch, so the whole panel behaves the same way.
+    ///
+    /// Only gestures the swipe state machine locks horizontally are consumed;
+    /// it passes vertical ones through untouched, so the list still scrolls.
+    override func sendEvent(_ event: NSEvent) {
+        switch event.type {
+        case .scrollWheel:
+            if onScrollWheel?(event) == true { return }
+        case .keyDown:
+            if onKeyDown?(event) == true { return }
+        default:
+            break
+        }
+        super.sendEvent(event)
     }
 }

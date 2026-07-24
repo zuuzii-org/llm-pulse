@@ -422,11 +422,15 @@ struct TaskSidebarView: View {
                             .lineLimit(1)
                     }
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(
+                        isSelected ? TaskSidebarPalette.selectedModelInk : Color.secondary
+                    )
                     .padding(.horizontal, 9)
                     .frame(height: 28)
                     .background(
-                        isSelected ? Color.accentColor.opacity(0.13) : Color.clear,
+                        isSelected
+                            ? TaskSidebarPalette.selectedModelInk.opacity(0.15)
+                            : Color.clear,
                         in: Capsule()
                     )
                 }
@@ -1851,6 +1855,11 @@ private enum TaskSidebarPalette {
     // dark material. This brighter ink preserves the running-state blue while
     // keeping project names and status text legible at caption sizes.
     static let runningInk = Color(red: 0.32, green: 0.72, blue: 1.0)
+
+    // The selected model tab. Deliberately not the accent color: the accent
+    // marks things the user acts on inside the current model — unread rows,
+    // the project filter — while this marks which model is being looked at.
+    static let selectedModelInk = Color(red: 1.0, green: 0.62, blue: 0.16)
 }
 
 private extension PulseTaskState {
