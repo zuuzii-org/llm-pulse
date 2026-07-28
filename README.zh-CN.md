@@ -25,7 +25,7 @@
 
 | | |
 |---|---|
-| **产品** | LLM Pulse 2.2.0 |
+| **产品** | LLM Pulse 2.2.1 |
 | **开发者** | Zuuzii |
 | **平台** | macOS 14 或更高版本；支持 Apple Silicon 和 Intel |
 | **类别** | 本机 Codex 任务监控与菜单栏工具 |
@@ -37,20 +37,20 @@
 
 ## 下载
 
-[下载最新的已签名、已公证 DMG](https://github.com/zuuzii-org/llm-pulse/releases/latest)。LLM Pulse 2.2.0 要求 macOS 14 或更高版本，同时支持 Apple Silicon 和 Intel Mac。
+[下载最新的已签名、已公证 DMG](https://github.com/zuuzii-org/llm-pulse/releases/latest)。LLM Pulse 2.2.1 要求 macOS 14 或更高版本，同时支持 Apple Silicon 和 Intel Mac。
 
-v2.2.0 Release 附件包括：
+v2.2.1 Release 附件包括：
 
-- `LLM-Pulse-2.2.0.dmg`
-- `LLM-Pulse-2.2.0.dmg.sha256`
+- `LLM-Pulse-2.2.1.dmg`
+- `LLM-Pulse-2.2.1.dmg.sha256`
 
 将两个文件放在同一目录，然后执行以下命令验证下载内容：
 
 ```bash
-shasum -a 256 -c LLM-Pulse-2.2.0.dmg.sha256
+shasum -a 256 -c LLM-Pulse-2.2.1.dmg.sha256
 ```
 
-v1.0.0 用户需要先手动安装一次 v1.1.0，因为 v1.0.0 尚未包含应用内更新。v1.1–v1.3 用户应先安装并启动 v1.4，再升级到 v2.2.0。
+v1.0.0 用户需要先手动安装一次 v1.1.0，因为 v1.0.0 尚未包含应用内更新。v1.1–v1.3 用户应先安装并启动 v1.4，再升级到 v2.2.1。
 
 ## LLM Pulse 能显示什么
 
