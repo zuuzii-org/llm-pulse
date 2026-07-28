@@ -56,6 +56,16 @@ final class ClaudeLiveSmokeTests: XCTestCase {
             }
         }
 
+        for task in snapshot.tasks {
+            print("""
+            [claude-smoke] session=\(task.sessionID.prefix(8)) \
+            state=\(task.state.rawValue) \
+            title=\(task.title) \
+            project=\(task.projectDirectory) \
+            idleSeconds=\(Int(Date().timeIntervalSince(task.updatedAt)))
+            """)
+        }
+
         // Printed rather than asserted: an idle machine legitimately has none.
         print("""
         [claude-smoke] tasks=\(snapshot.tasks.count) \

@@ -179,6 +179,55 @@ final class ClaudeTaskRepositoryTests: XCTestCase {
 
     // MARK: - Fixtures
 
+    /// The registry's name is a generated slug unless it says otherwise, and
+    /// showing it means the session cannot be found by the title Claude itself
+    /// displays.
+    func testTheTitleClaudeShowsWinsOverAGeneratedSlug() async throws {
+        let tree = try makeTree()
+        defer { tree.remove() }
+        try tree.writeRegistry(
+            pid: 4_242,
+            sessionID: sessionID,
+            startedAt: base,
+            nameSource: "derived"
+        )
+        try tree.writeTranscript(sessionID: sessionID, project: "mc-mods", records: [
+            userRecord(at: base),
+            assistantRecord(at: base.addingTimeInterval(1)),
+            ["type": "ai-title", "aiTitle": "暮色森林迁移进度检查"],
+            ["type": "custom-title", "customTitle": "暮色森林迁移"],
+        ])
+
+        let snapshot = await tree.repository(livePIDs: [4_242: base])
+            .snapshot(now: base.addingTimeInterval(10))
+
+        XCTAssertEqual(try XCTUnwrap(snapshot.tasks.first).title, "暮色森林迁移")
+    }
+
+    func testAGeneratedTitleIsUsedWhenTheUserSetNone() async throws {
+        let tree = try makeTree()
+        defer { tree.remove() }
+        try tree.writeRegistry(
+            pid: 4_242,
+            sessionID: sessionID,
+            startedAt: base,
+            nameSource: "derived"
+        )
+        try tree.writeTranscript(sessionID: sessionID, project: "mc-mods", records: [
+            userRecord(at: base),
+            assistantRecord(at: base.addingTimeInterval(1)),
+            ["type": "ai-title", "aiTitle": "暮色森林迁移进度检查"],
+        ])
+
+        let snapshot = await tree.repository(livePIDs: [4_242: base])
+            .snapshot(now: base.addingTimeInterval(10))
+
+        XCTAssertEqual(
+            try XCTUnwrap(snapshot.tasks.first).title,
+            "暮色森林迁移进度检查"
+        )
+    }
+
     private func makeTree() throws -> Tree {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -239,7 +288,12 @@ final class ClaudeTaskRepositoryTests: XCTestCase {
             )
         }
 
-        func writeRegistry(pid: Int32, sessionID: String, startedAt: Date) throws {
+        func writeRegistry(
+            pid: Int32,
+            sessionID: String,
+            startedAt: Date,
+            nameSource: String = "user"
+        ) throws {
             let payload: [String: Any] = [
                 "pid": Int(pid),
                 "sessionId": sessionID,
@@ -248,6 +302,7 @@ final class ClaudeTaskRepositoryTests: XCTestCase {
                 "kind": "interactive",
                 "entrypoint": "claude-desktop",
                 "name": "session-name",
+                "nameSource": nameSource,
             ]
             try JSONSerialization.data(withJSONObject: payload).write(
                 to: paths.sessionsDirectory.appendingPathComponent("\(pid).json")

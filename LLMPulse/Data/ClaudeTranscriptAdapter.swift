@@ -106,7 +106,9 @@ actor ClaudeTranscriptAdapter {
                 sessionID: sessionID,
                 transcriptURL: url,
                 status: status,
-                tokens: cached.fold.tokens
+                tokens: cached.fold.tokens,
+                customTitle: cached.fold.customTitle,
+                generatedTitle: cached.fold.generatedTitle
             ))
         }
 

@@ -78,6 +78,16 @@ Claude 侧的证据比 Codex 更硬：`~/.claude/sessions/<pid>.json` 以进程�
 
 无对应存活进程的转录被钳制为终态：运行中/等待类一律转 `completed`，而 `interrupted`/`failed` 予以保留——后者是真实证据，前者只是证据缺失。否则每个被强杀的会话都会变成永久的幽灵行。
 
+**因此注册表匹配失败的代价是复合的**：一次错误丢弃会同时让该会话被钳成终态、失去 cwd、标题退化、并关闭深链——四个症状，一个根因。存活判定的容差必须往「宁可保留」的方向倾斜。
+
+### 会话标题
+
+行标题优先级：转录的 `custom-title` > 转录的 `ai-title` > 注册表 `name`（仅当 `nameSource != "derived"`）> 项目目录名。
+
+注册表的 `name` 默认是应用生成的短 slug（`mc-mods-1c`），把它当标题会导致**用户在面板里找不到自己的会话**——Claude 自己的侧边栏显示的是 `custom-title`。`nameSource` 字段就是注册表在声明该名字有没有意义，据此取舍。
+
+标题是**转录里唯一被读取的自然语言**，属于刻意豁免。理由：它是厂商界面本就展示的标签，与注册表 `name` 同类；Codex 侧一直在读 `session_index.jsonl` 的 `thread_name` 做同一件事；且只停留在本机、只展示给写下它的人。禁读范围不变——prompt、thinking、tool input、tool output 一概不取，`ParsedField` 枚举与其测试是该契约的可执行形式。
+
 ### 用量与额度
 
 Claude 模型页的用量卡片分两部分，二者的保证强度不同，因此在视觉上也不同。

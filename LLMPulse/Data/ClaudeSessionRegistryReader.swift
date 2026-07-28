@@ -74,6 +74,10 @@ struct ClaudeSessionRegistryReader: Sendable {
         return Int32(digits)
     }
 
+    /// Slack for clock granularity between the two sources, not for the
+    /// session-creation delay — that only moves the value the other way.
+    private static let startTimeSkewTolerance: TimeInterval = 2
+
     private static func entry(
         from payload: [String: Any],
         declaredProcessID: Int32,
@@ -100,11 +104,23 @@ struct ClaudeSessionRegistryReader: Sendable {
             return nil
         }
 
-        // Process ids wrap in minutes under load, so a registry file left
-        // behind by a crash can name a pid that now belongs to something
-        // else. Comparing start times is what rules that out.
+        // Process ids wrap under load, so a registry file left behind by a
+        // crash can name a pid that now belongs to something else. Start
+        // times rule that out — but only in one direction.
+        //
+        // A session is created after its process starts, never before, and
+        // how long that takes varies with load: usually a fraction of a
+        // second, but a cold start here took 2.1s, which a symmetric window
+        // read as pid reuse and dropped a live session for. Resuming into an
+        // existing process makes the gap larger still.
+        //
+        // Reuse has the opposite sign. A file written by a dead process
+        // records when *that* process started, which necessarily predates the
+        // younger process now holding the pid. So a recorded start earlier
+        // than the running process is the thing to reject.
         if let recordedStart = JSONValueSupport.date(payload["startedAt"]),
-           abs(recordedStart.timeIntervalSince1970 - Double(facts.startedAt)) > 2
+           recordedStart.timeIntervalSince1970
+            < Double(facts.startedAt) - Self.startTimeSkewTolerance
         {
             return nil
         }
@@ -118,7 +134,8 @@ struct ClaudeSessionRegistryReader: Sendable {
             workingDirectory: workingDirectory,
             entrypoint: JSONValueSupport.string(payload["entrypoint"]),
             startedAt: startedAt,
-            name: JSONValueSupport.string(payload["name"])
+            name: JSONValueSupport.string(payload["name"]),
+            hasDerivedName: JSONValueSupport.string(payload["nameSource"]) == "derived"
         )
     }
 

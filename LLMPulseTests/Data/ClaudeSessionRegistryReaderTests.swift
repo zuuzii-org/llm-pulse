@@ -162,21 +162,72 @@ final class ClaudeSessionRegistryReaderTests: XCTestCase {
         return url
     }
 
+    /// A session is created after its process starts, and how long that takes
+    /// varies with load. A symmetric window treated a slow start as pid reuse
+    /// and dropped a live session, which then rendered as a finished task with
+    /// no project and no working deep link.
+    func testASessionRecordedAfterItsProcessStartedIsKept() throws {
+        let directory = try makeSessionsDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try write(pid: 4444, to: directory, sessionStartOffset: 9)
+
+        let result = try ClaudeSessionRegistryReader(
+            sessionsDirectory: directory,
+            probe: FakeProbe(facts: [4444: facts(startedAt: startedAt)])
+        ).read()
+
+        XCTAssertEqual(result.entries.map { $0.processID }, [4444])
+    }
+
+    /// The genuine reuse signature: the file was written by a process that
+    /// started earlier than the one now holding the pid.
+    func testASessionRecordedBeforeItsProcessStartedIsRejected() throws {
+        let directory = try makeSessionsDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try write(pid: 4444, to: directory, sessionStartOffset: -600)
+
+        let result = try ClaudeSessionRegistryReader(
+            sessionsDirectory: directory,
+            probe: FakeProbe(facts: [4444: facts(startedAt: startedAt)])
+        ).read()
+
+        XCTAssertTrue(result.entries.isEmpty)
+    }
+
+    func testADerivedNameIsReportedAsSuch() throws {
+        let directory = try makeSessionsDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try write(pid: 4444, to: directory)
+
+        let entry = try XCTUnwrap(ClaudeSessionRegistryReader(
+            sessionsDirectory: directory,
+            probe: FakeProbe(facts: [4444: facts(startedAt: startedAt)])
+        ).read().entries.first)
+
+        XCTAssertTrue(
+            entry.hasDerivedName,
+            "A slug must lose to the title the transcript carries."
+        )
+    }
+
     private func write(
         pid: Int,
         to directory: URL,
         kind: String = "interactive",
-        filenameProcessID: Int? = nil
+        filenameProcessID: Int? = nil,
+        sessionStartOffset: TimeInterval = 0
     ) throws {
         let payload: [String: Any] = [
             "pid": pid,
             "sessionId": Self.sessionID,
             "cwd": "/tmp/project",
-            "startedAt": startedAt.timeIntervalSince1970 * 1_000,
+            "startedAt": startedAt.addingTimeInterval(sessionStartOffset)
+                .timeIntervalSince1970 * 1_000,
             "version": "2.1.219",
             "kind": kind,
             "entrypoint": "claude-desktop",
             "name": "project-3f",
+            "nameSource": "derived",
         ]
         let data = try JSONSerialization.data(withJSONObject: payload)
         try data.write(

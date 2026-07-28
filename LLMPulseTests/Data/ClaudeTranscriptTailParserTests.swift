@@ -373,7 +373,8 @@ final class ClaudeTranscriptTailParserTests: XCTestCase {
         // real one, so it is enumerated rather than described in prose.
         let fields = Set(ClaudeTranscriptTailParser.ParsedField.allCases.map(\.rawValue))
 
-        for forbidden in ["text", "thinking", "input", "command", "customTitle", "lastPrompt"] {
+        // Conversation content. Nothing here may ever be read.
+        for forbidden in ["text", "thinking", "input", "command", "lastPrompt"] {
             XCTAssertFalse(
                 fields.contains(forbidden),
                 "\(forbidden) carries user or model prose."
@@ -381,6 +382,32 @@ final class ClaudeTranscriptTailParserTests: XCTestCase {
         }
         XCTAssertTrue(fields.contains("usage"))
         XCTAssertTrue(fields.contains("tool_use_id"))
+    }
+
+    /// Session titles are read, and that is a deliberate exception.
+    ///
+    /// They were on the forbidden list until a live session proved
+    /// unfindable without them: the registry offers only a generated slug
+    /// (`mc-mods-1c`), so a row titled that cannot be matched to the session
+    /// Claude's own sidebar calls 暮色森林迁移.
+    ///
+    /// The exception is narrow and already has precedent. A title is a label
+    /// the vendor's interface displays for the session, the same class as the
+    /// registry's `name`, and the Codex adapter has always read `thread_name`
+    /// out of `session_index.jsonl` for exactly this. It stays on this Mac,
+    /// shown to the person who wrote it. What remains forbidden is unchanged:
+    /// prompts, thinking, tool input, and tool output.
+    func testSessionTitlesAreReadButNothingElseAboutTheConversation() {
+        let fields = Set(ClaudeTranscriptTailParser.ParsedField.allCases.map(\.rawValue))
+
+        XCTAssertTrue(fields.contains("customTitle"))
+        XCTAssertTrue(fields.contains("aiTitle"))
+
+        // A title is a label; the prompt beside it in the transcript is not.
+        // `content` stays on the list because the parser walks the block array
+        // for tool types and ids — it never reads a block's text.
+        XCTAssertFalse(fields.contains("lastPrompt"))
+        XCTAssertFalse(fields.contains("text"))
     }
 
     // MARK: - Fixtures

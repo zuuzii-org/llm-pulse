@@ -258,15 +258,33 @@ actor ClaudeTaskRepository {
         )
     }
 
+    /// The row title, in the order a person would recognise it.
+    ///
+    /// The registry's `name` is a slug the app generated (`mc-mods-1c`) unless
+    /// `nameSource` says otherwise, and showing it means the session cannot be
+    /// found by the title Claude itself displays. The transcript carries that
+    /// title, so it wins.
     private func title(
         for record: ClaudeTranscriptTaskRecord,
         entry: ClaudeSessionRegistryEntry?
     ) -> String {
-        if let name = entry?.name, !name.isEmpty { return name }
+        // What the user named it, then what the app named it.
+        if let title = record.customTitle { return title }
+        if let title = record.generatedTitle { return title }
+
+        // A registry name only helps when the app says it is not a slug.
+        if let entry, !entry.hasDerivedName, let name = entry.name, !name.isEmpty {
+            return name
+        }
+
         let directory = entry?.workingDirectory
             ?? Self.projectDirectory(forTranscript: record.transcriptURL)
         let lastComponent = URL(fileURLWithPath: directory).lastPathComponent
-        return lastComponent.isEmpty ? "Claude Code session" : lastComponent
+        if !lastComponent.isEmpty, lastComponent != "/" { return lastComponent }
+
+        // Better a slug than nothing.
+        if let name = entry?.name, !name.isEmpty { return name }
+        return "Claude Code session"
     }
 
     /// Only a live registry entry carries a real working directory.

@@ -11,10 +11,14 @@ struct ClaudeSessionRegistryEntry: Equatable, Sendable {
     let entrypoint: String?
     let startedAt: Date
 
-    /// The session name the app derived or the user set. Shown as the row
-    /// title, and the only free text this adapter reads — it is a label the
-    /// app already displays, never conversation content.
+    /// The session name the app derived or the user set. A label the app
+    /// already displays, never conversation content.
     let name: String?
+
+    /// True when `name` is a slug the app made up (`mc-mods-1c`) rather than
+    /// anything a person would recognise. Such a name loses to the title the
+    /// transcript carries.
+    let hasDerivedName: Bool
 
     var isDesktopEntrypoint: Bool {
         entrypoint == ClaudeDeepLink.desktopEntrypoint
@@ -92,6 +96,14 @@ struct ClaudeTranscriptFold: Equatable, Sendable {
     var queuedPromptCount = 0
 
     var tokens = ClaudeTokenFold()
+
+    /// The session title the app itself displays.
+    ///
+    /// A label the user set or the app generated — the same class of text as
+    /// the registry's `name`, and not conversation content. The prompt text
+    /// sitting beside it in the transcript is deliberately never read.
+    var customTitle: String?
+    var generatedTitle: String?
 
     /// Bytes of a trailing partial line, prepended to the next chunk.
     var carryOver = Data()
@@ -173,6 +185,8 @@ enum ClaudeRecordKind: String, Equatable, Sendable {
     case system
     case attachment
     case queueOperation = "queue-operation"
+    case customTitle = "custom-title"
+    case generatedTitle = "ai-title"
 }
 
 struct ClaudeTranscriptTaskRecord: Sendable {
@@ -183,6 +197,10 @@ struct ClaudeTranscriptTaskRecord: Sendable {
     /// The full fold rather than its compressed form, so a model-level total
     /// can keep the cache breakdown a `TokenUsageSnapshot` folds away.
     let tokens: ClaudeTokenFold
+
+    /// Title the user set, then the one the app generated.
+    let customTitle: String?
+    let generatedTitle: String?
 
     var tokenUsage: TokenUsageSnapshot? { tokens.snapshot }
 }

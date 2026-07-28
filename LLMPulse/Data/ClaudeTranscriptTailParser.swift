@@ -39,6 +39,8 @@ struct ClaudeTranscriptTailParser: Sendable {
         case name
         case toolUseID = "tool_use_id"
         case isError = "is_error"
+        case customTitle
+        case aiTitle
     }
 
     /// Tool names that change what the row says rather than just keeping it
@@ -162,9 +164,29 @@ struct ClaudeTranscriptTailParser: Sendable {
                 fold.isFailed = true
             }
 
+        case .customTitle:
+            if let title = JSONValueSupport.string(object["customTitle"]) {
+                fold.customTitle = Self.sanitizedTitle(title)
+            }
+
+        case .generatedTitle:
+            if let title = JSONValueSupport.string(object["aiTitle"]) {
+                fold.generatedTitle = Self.sanitizedTitle(title)
+            }
+
         case .attachment:
             break
         }
+    }
+
+    /// Bounds a title and rejects one that is only whitespace.
+    ///
+    /// These are short labels by construction, but nothing enforces that on
+    /// disk and the value goes straight into a row.
+    private static func sanitizedTitle(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return String(trimmed.prefix(120))
     }
 
     private func applyMessage(_ raw: Any?, to fold: inout ClaudeTranscriptFold) {
