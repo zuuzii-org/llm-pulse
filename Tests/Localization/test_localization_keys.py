@@ -124,6 +124,51 @@ def _entries(table: Path) -> list[tuple[str, str]]:
     return ENTRY_PATTERN.findall(table.read_text(encoding="utf-8"))
 
 
+def _strip_comments(text: str) -> str:
+    """Blanks `//` and `/* */` comments, leaving string literals untouched.
+
+    Doc comments quote example copy ("约 周四 21:00 重置"), and quoting an
+    example must not oblige anyone to translate it. `//` inside a string
+    (every URL) stays, which is why this walks states instead of using a
+    regex.
+    """
+    result = list(text)
+    index = 0
+    length = len(text)
+    while index < length:
+        character = text[index]
+        if character == '"':
+            index = _skip_swift_string_literal(text, index)
+            continue
+        if character == "/" and index + 1 < length:
+            following = text[index + 1]
+            if following == "/":
+                while index < length and text[index] != "\n":
+                    result[index] = " "
+                    index += 1
+                continue
+            if following == "*":
+                depth = 1
+                result[index] = result[index + 1] = " "
+                index += 2
+                while index < length and depth > 0:
+                    if text[index : index + 2] == "/*":
+                        depth += 1
+                        result[index] = result[index + 1] = " "
+                        index += 2
+                    elif text[index : index + 2] == "*/":
+                        depth -= 1
+                        result[index] = result[index + 1] = " "
+                        index += 2
+                    else:
+                        if text[index] != "\n":
+                            result[index] = " "
+                        index += 1
+                continue
+        index += 1
+    return "".join(result)
+
+
 def _swiftui_literals() -> list[tuple[str, Path]]:
     """Copy that SwiftUI localizes on its own, rather than through PulseL10n.
 
@@ -134,7 +179,7 @@ def _swiftui_literals() -> list[tuple[str, Path]]:
     """
     literals: list[tuple[str, Path]] = []
     for source in _swift_sources():
-        text = source.read_text(encoding="utf-8")
+        text = _strip_comments(source.read_text(encoding="utf-8"))
         masked = re.sub(
             r'(PulseL10n\.text\(\s*)"((?:[^"\\]|\\.)*)"',
             lambda match: f'{match.group(1)}""',

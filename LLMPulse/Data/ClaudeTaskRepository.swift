@@ -24,6 +24,12 @@ actor ClaudeTaskRepository {
     private var lastEntries: [ClaudeSessionRegistryEntry] = []
     private var consecutiveRegistryFailures = 0
 
+    /// The usage history is parsed in full, and it grows by a sample every
+    /// few minutes forever. At a 750 ms poll that parse must be keyed on the
+    /// file's stamp, not repeated; projections onto `now` stay per-poll.
+    private var planUsageStamp: ClaudeFileStamp?
+    private var planUsageParsed: ClaudePlanUsageReader.Parsed?
+
     init(
         paths: ClaudePaths,
         probe: any ClaudeProcessProbing = LibprocProcessProbe(),
@@ -167,7 +173,14 @@ actor ClaudeTaskRepository {
             totals.requestCount += record.tokens.requestCount
         }
 
-        let planUsage = planUsageReader.read(now: now)
+        let stamp = ClaudeFileStamp(path: paths.planUsageHistoryURL.path)
+        if stamp != planUsageStamp {
+            planUsageStamp = stamp
+            planUsageParsed = planUsageReader.parse()
+        }
+        let planUsage = planUsageParsed.flatMap {
+            planUsageReader.reading(from: $0, now: now)
+        }
         guard totals.totalTokens > 0 || planUsage != nil else { return nil }
 
         return ModelUsageSnapshot(

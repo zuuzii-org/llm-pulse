@@ -160,6 +160,9 @@
 "已用 %d%%" = "%d%% used";
 "%@已用 %d%%" = "%@, %d%% used";
 "账户级用量 · 无重置时间" = "Account-wide usage · no reset time available";
+"账户级用量 · 重置时间为估算" = "Account-wide usage · reset times are estimated";
+"约 %@ 重置" = "Resets around %@";
+"%@，%@" = "%@, %@";
 "模型数据源暂不可用" = "The model data source is temporarily unavailable";
 "模型数据源刷新超时或返回了无效身份" = "The model data source timed out or returned an invalid identity";
 "刚刚" = "just now";

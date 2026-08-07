@@ -10,10 +10,22 @@ struct PlanUsageWindow: Equatable, Codable, Sendable {
     let usedPercent: Int
     let windowMinutes: Int
 
-    init?(usedPercent: Int, windowMinutes: Int) {
+    /// When the window is expected to reset, inferred rather than reported.
+    ///
+    /// The vendor never persists a reset time, but the moment one happens
+    /// leaves a mark: the recorded percentage collapses between two adjacent
+    /// samples. The weekly reset is a fixed anchor, so one observed collapse
+    /// projects forward indefinitely; the five-hour window resets five hours
+    /// after the first request that opened it, which the samples bracket to
+    /// within their cadence. Estimated, and displayed as such — never nil'd
+    /// into looking authoritative.
+    let estimatedResetsAt: Date?
+
+    init?(usedPercent: Int, windowMinutes: Int, estimatedResetsAt: Date? = nil) {
         guard (0...100).contains(usedPercent), windowMinutes > 0 else { return nil }
         self.usedPercent = usedPercent
         self.windowMinutes = windowMinutes
+        self.estimatedResetsAt = estimatedResetsAt
     }
 
     var remainingPercent: Int { 100 - usedPercent }
@@ -64,4 +76,9 @@ struct ModelUsageSnapshot: Equatable, Codable, Sendable {
     var totalTokens: Int { inputTokens + outputTokens }
 
     var hasPlanUsage: Bool { fiveHourWindow != nil || sevenDayWindow != nil }
+
+    var hasEstimatedResets: Bool {
+        fiveHourWindow?.estimatedResetsAt != nil
+            || sevenDayWindow?.estimatedResetsAt != nil
+    }
 }

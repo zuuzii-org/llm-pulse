@@ -1219,10 +1219,14 @@ private struct ModelUsageCard: View {
                     window: window
                 )
             }
-            Text(PulseL10n.text("账户级用量 · 无重置时间", language: language))
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                usage.hasEstimatedResets
+                    ? PulseL10n.text("账户级用量 · 重置时间为估算", language: language)
+                    : PulseL10n.text("账户级用量 · 无重置时间", language: language)
+            )
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -1233,6 +1237,11 @@ private struct ModelUsageCard: View {
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
+                if let resetsAt = window.estimatedResetsAt {
+                    Text(planUsageResetText(resetsAt, window: window))
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
                 Text(PulseL10n.text(
                     "已用 %d%%",
                     language: language,
@@ -1258,12 +1267,42 @@ private struct ModelUsageCard: View {
             .frame(height: 4)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(PulseL10n.text(
+        .accessibilityLabel(planUsageAccessibilityText(title: title, window: window))
+    }
+
+    /// "约 周四 21:00 重置" for the weekly window, "约 01:03 重置" for the
+    /// five-hour one — a weekday on a window that resets within hours would
+    /// only add noise.
+    private func planUsageResetText(_ resetsAt: Date, window: PlanUsageWindow) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = language.locale
+        formatter.setLocalizedDateFormatFromTemplate(
+            window.windowMinutes >= 24 * 60 ? "EEEjmm" : "jmm"
+        )
+        return PulseL10n.text(
+            "约 %@ 重置",
+            language: language,
+            formatter.string(from: resetsAt)
+        )
+    }
+
+    private func planUsageAccessibilityText(
+        title: String,
+        window: PlanUsageWindow
+    ) -> String {
+        let base = PulseL10n.text(
             "%@已用 %d%%",
             language: language,
             title,
             window.usedPercent
-        ))
+        )
+        guard let resetsAt = window.estimatedResetsAt else { return base }
+        return PulseL10n.text(
+            "%@，%@",
+            language: language,
+            base,
+            planUsageResetText(resetsAt, window: window)
+        )
     }
 
     private static let tokenFormatter: NumberFormatter = {

@@ -78,6 +78,9 @@ final class ClaudeLiveSmokeTests: XCTestCase {
         cacheRead=\(snapshot.usage?.cacheReadInputTokens ?? -1) \
         5h=\(snapshot.usage?.fiveHourWindow?.usedPercent.description ?? "nil")% \
         7d=\(snapshot.usage?.sevenDayWindow?.usedPercent.description ?? "nil")%
+        [claude-smoke] resets \
+        5h=\(snapshot.usage?.fiveHourWindow?.estimatedResetsAt?.description ?? "nil") \
+        7d=\(snapshot.usage?.sevenDayWindow?.estimatedResetsAt?.description ?? "nil")
         """)
     }
 }
