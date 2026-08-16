@@ -63,30 +63,31 @@ struct StatusItemPresentation: Equatable {
         return .normal
     }
 
+    /// Sessions actually executing, excluding the ones waiting on the user.
+    var runningCount: Int {
+        max(0, activeCount - waitingActionCount)
+    }
+
     var title: String {
-        "\(activeTitle)\n\(recentCompletedTitle)"
+        "\(attentionTitle)\n\(runningTitle)"
     }
 
-    var activeTitle: String {
-        Self.compactCount(activeCount)
+    /// The upper digit: work that is blocked on the user.
+    var attentionTitle: String {
+        Self.compactCount(waitingActionCount)
     }
 
-    var recentCompletedTitle: String {
-        Self.compactCount(recentCompletedCount)
+    /// The lower digit: work happening on its own.
+    var runningTitle: String {
+        Self.compactCount(runningCount)
     }
 
     var accessibilityLabel: String {
         var components = [
-            PulseL10n.text("正在运行 %d 个任务", language: language, activeCount),
+            PulseL10n.text("需要你处理 %d 个任务", language: language, waitingActionCount),
+            PulseL10n.text("正在运行 %d 个任务", language: language, runningCount),
             PulseL10n.text("最近完成 %d 个任务", language: language, recentCompletedCount),
         ]
-        if hasWaitingAction {
-            components.append(PulseL10n.text(
-                "需要你处理 %d 个任务",
-                language: language,
-                waitingActionCount
-            ))
-        }
         if hasFailures {
             components.append(PulseL10n.text("存在失败", language: language))
         }
@@ -98,16 +99,10 @@ struct StatusItemPresentation: Equatable {
 
     var toolTip: String {
         var components = [
-            PulseL10n.text("正在运行 %d", language: language, activeCount),
+            PulseL10n.text("需要你处理 %d", language: language, waitingActionCount),
+            PulseL10n.text("正在运行 %d", language: language, runningCount),
             PulseL10n.text("最近完成 %d", language: language, recentCompletedCount),
         ]
-        if hasWaitingAction {
-            components.append(PulseL10n.text(
-                "需要你处理 %d",
-                language: language,
-                waitingActionCount
-            ))
-        }
         if hasFailures {
             components.append(PulseL10n.text("存在失败", language: language))
         }
@@ -321,7 +316,10 @@ final class StatusItemController: NSObject {
         )
         statusContentView.update(
             presentation: presentation,
-            activeColor: indicatorColor(for: presentation.indicatorState)
+            attentionColor: attentionColor(for: presentation),
+            runningColor: presentation.runningCount > 0
+                ? .systemBlue
+                : .secondaryLabelColor
         )
         button.setAccessibilityLabel(presentation.accessibilityLabel)
         button.toolTip = presentation.toolTip
@@ -372,14 +370,18 @@ final class StatusItemController: NSObject {
         }
     }
 
-    private func indicatorColor(for state: StatusItemIndicatorState) -> NSColor {
-        switch state {
-        case .normal:
-            return .systemBlue
-        case .waitingAction:
-            return .systemOrange
+    /// The upper digit is the attention channel: orange while anything waits
+    /// on the user, red when something failed — a failure needs the user just
+    /// as much, and losing that signal was not part of the redesign. Dimmed
+    /// at zero so an empty count never reads as a demand.
+    private func attentionColor(for presentation: StatusItemPresentation) -> NSColor {
+        switch presentation.indicatorState {
         case .failure:
             return .systemRed
+        case .waitingAction:
+            return .systemOrange
+        case .normal:
+            return .secondaryLabelColor
         }
     }
 
@@ -456,8 +458,8 @@ final class StatusItemContentView: NSView {
     private let iconView: NSImageView
     private let metricsView = StatusItemMetricsView()
 
-    private(set) var activeTitle = "0"
-    private(set) var recentCompletedTitle = "0"
+    private(set) var attentionTitle = "0"
+    private(set) var runningTitle = "0"
 
     override init(frame frameRect: NSRect) {
         let icon = NSImage.statusMenuIcon
@@ -505,13 +507,18 @@ final class StatusItemContentView: NSView {
         )
     }
 
-    func update(presentation: StatusItemPresentation, activeColor: NSColor) {
-        activeTitle = presentation.activeTitle
-        recentCompletedTitle = presentation.recentCompletedTitle
+    func update(
+        presentation: StatusItemPresentation,
+        attentionColor: NSColor,
+        runningColor: NSColor
+    ) {
+        attentionTitle = presentation.attentionTitle
+        runningTitle = presentation.runningTitle
         metricsView.update(
-            activeTitle: activeTitle,
-            recentCompletedTitle: recentCompletedTitle,
-            activeColor: activeColor
+            attentionTitle: attentionTitle,
+            runningTitle: runningTitle,
+            attentionColor: attentionColor,
+            runningColor: runningColor
         )
     }
 
@@ -526,20 +533,23 @@ private final class StatusItemMetricsView: NSView {
         weight: .semibold
     )
 
-    private var activeTitle = "0"
-    private var recentCompletedTitle = "0"
-    private var activeColor = NSColor.systemBlue
+    private var attentionTitle = "0"
+    private var runningTitle = "0"
+    private var attentionColor = NSColor.systemOrange
+    private var runningColor = NSColor.systemBlue
 
     override var isOpaque: Bool { false }
 
     func update(
-        activeTitle: String,
-        recentCompletedTitle: String,
-        activeColor: NSColor
+        attentionTitle: String,
+        runningTitle: String,
+        attentionColor: NSColor,
+        runningColor: NSColor
     ) {
-        self.activeTitle = activeTitle
-        self.recentCompletedTitle = recentCompletedTitle
-        self.activeColor = activeColor
+        self.attentionTitle = attentionTitle
+        self.runningTitle = runningTitle
+        self.attentionColor = attentionColor
+        self.runningColor = runningColor
         needsDisplay = true
     }
 
@@ -557,13 +567,13 @@ private final class StatusItemMetricsView: NSView {
         let bottomBaseline = ((bounds.height - stackHeight) / 2) - font.descender
 
         draw(
-            recentCompletedTitle,
-            color: .systemGreen,
+            runningTitle,
+            color: runningColor,
             baseline: bottomBaseline
         )
         draw(
-            activeTitle,
-            color: activeColor,
+            attentionTitle,
+            color: attentionColor,
             baseline: bottomBaseline + lineAdvance
         )
     }

@@ -54,7 +54,7 @@ Users on v1.0.0 must install v1.1.0 manually once because v1.0.0 did not include
 
 ## What LLM Pulse shows
 
-- **A compact menu bar status.** The top number is the active-task count; the bottom number is the recent-completion count. Waiting work turns the active indicator orange, while failures turn it red.
+- **A compact menu bar status.** The top number counts tasks waiting on you, in orange; the bottom number counts tasks actually running, in blue. A failure turns the top indicator red, and a zero renders dimmed instead of colored.
 - **A full-height task sidebar.** Hold the pointer at the middle 60% of the current display’s right edge for about 200 ms. The 400 px panel opens on the display under the pointer and avoids internal seams between adjacent displays.
 - **Clear task groups.** Running, waiting for approval, waiting for an answer, and recent tasks remain visually distinct. Running and recent sections can be folded independently, and their state is restored at the next launch.
 - **Useful task context.** Each row shows the project, session, elapsed time, latest state, cumulative token use, and the active total for the main agent plus descendant agents.

@@ -23,9 +23,10 @@ final class StatusItemPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.activeCount, 2)
         XCTAssertEqual(presentation.recentCompletedCount, 4)
         XCTAssertEqual(presentation.waitingActionCount, 1)
+        XCTAssertEqual(presentation.runningCount, 1)
         XCTAssertTrue(presentation.hasWaitingAction)
         XCTAssertEqual(presentation.indicatorState, .failure)
-        XCTAssertEqual(presentation.title, "2\n4")
+        XCTAssertEqual(presentation.title, "1\n1", "attention above, running below")
         XCTAssertTrue(presentation.hasFailures)
     }
 
@@ -39,7 +40,7 @@ final class StatusItemPresentationTests: XCTestCase {
             snapshot: TaskSnapshot(tasks: tasks, refreshedAt: .now, health: [])
         )
 
-        XCTAssertEqual(presentation.title, "99+\n99+")
+        XCTAssertEqual(presentation.title, "0\n99+")
         XCTAssertTrue(presentation.accessibilityLabel.contains("正在运行 100 个任务"))
         XCTAssertTrue(presentation.accessibilityLabel.contains("最近完成 100 个任务"))
     }
@@ -51,8 +52,8 @@ final class StatusItemPresentationTests: XCTestCase {
         let one = StatusItemPresentation(
             snapshot: TaskSnapshot(
                 tasks: [
+                    makeTask(id: "waiting-one", state: .waitingForApproval),
                     makeTask(id: "running-one", state: .running),
-                    makeTask(id: "completed-one", state: .completed),
                 ],
                 refreshedAt: .now,
                 health: []
@@ -61,9 +62,9 @@ final class StatusItemPresentationTests: XCTestCase {
         let twoDigits = StatusItemPresentation(
             snapshot: TaskSnapshot(
                 tasks: (0..<12).map {
-                    makeTask(id: "running-two-digits-\($0)", state: .running)
+                    makeTask(id: "waiting-two-digits-\($0)", state: .waitingForAnswer)
                 } + (0..<34).map {
-                    makeTask(id: "completed-two-digits-\($0)", state: .completed)
+                    makeTask(id: "running-two-digits-\($0)", state: .running)
                 },
                 refreshedAt: .now,
                 health: []
@@ -122,6 +123,7 @@ final class StatusItemPresentationTests: XCTestCase {
     func testStatusItemRendersFixedIconAndMetricLayout() throws {
         let snapshot = TaskSnapshot(
             tasks: [
+                makeTask(id: "waiting", state: .waitingForApproval),
                 makeTask(id: "running", state: .running),
                 makeTask(id: "completed", state: .completed),
             ],
@@ -144,8 +146,8 @@ final class StatusItemPresentationTests: XCTestCase {
         XCTAssertEqual(button.imagePosition, .noImage)
         XCTAssertTrue(button.title.isEmpty)
         XCTAssertEqual(button.attributedTitle.length, 0)
-        XCTAssertEqual(contentView.activeTitle, "1")
-        XCTAssertEqual(contentView.recentCompletedTitle, "1")
+        XCTAssertEqual(contentView.attentionTitle, "1")
+        XCTAssertEqual(contentView.runningTitle, "1")
         XCTAssertEqual(contentView.iconFrameForTesting.width, 18, accuracy: 0.01)
         XCTAssertEqual(contentView.iconFrameForTesting.height, 18, accuracy: 0.01)
         XCTAssertEqual(contentView.metricsFrameForTesting.width, 18, accuracy: 0.01)
@@ -154,7 +156,11 @@ final class StatusItemPresentationTests: XCTestCase {
 
         let outputBasePath = ProcessInfo.processInfo.environment["LLM_PULSE_STATUS_ITEM_QA_PATH"]
             ?? "/tmp/llm-pulse-status-item-fixture"
-        func render(_ button: NSStatusBarButton, variant: String) throws {
+        func render(
+            _ button: NSStatusBarButton,
+            variant: String,
+            expectsColoredInk: Bool = true
+        ) throws {
             let contentView = try XCTUnwrap(
                 button.subviews.compactMap { $0 as? StatusItemContentView }.first
             )
@@ -201,33 +207,36 @@ final class StatusItemPresentationTests: XCTestCase {
                 XCTAssertEqual(
                     metricInkCount(
                         in: bitmap,
-                        channel: .green,
+                        channel: .orange,
                         pixelBounds: iconPixelBounds
                     ),
                     0,
-                    "Completed count leaked into icon region for \(variant)-\(suffix)"
+                    "Attention count leaked into icon region for \(variant)-\(suffix)"
                 )
-                let blueRows = try metricInkRows(
-                    in: bitmap,
-                    channel: .blue,
-                    pointFrame: metricsFrame,
-                    pointBounds: button.bounds
-                )
-                let greenRows = try metricInkRows(
-                    in: bitmap,
-                    channel: .green,
-                    pointFrame: metricsFrame,
-                    pointBounds: button.bounds
-                )
-                assertMetricInkHasVerticalPadding(blueRows, in: bitmap)
-                assertMetricInkHasVerticalPadding(greenRows, in: bitmap)
-                // NSBitmapImageRep row zero is the visual top edge. The blue
-                // running count must therefore end above the first green row.
-                XCTAssertLessThan(
-                    try XCTUnwrap(blueRows.max()),
-                    try XCTUnwrap(greenRows.min()),
-                    "Metric rows must remain visibly separated"
-                )
+                if expectsColoredInk {
+                    let orangeRows = try metricInkRows(
+                        in: bitmap,
+                        channel: .orange,
+                        pointFrame: metricsFrame,
+                        pointBounds: button.bounds
+                    )
+                    let blueRows = try metricInkRows(
+                        in: bitmap,
+                        channel: .blue,
+                        pointFrame: metricsFrame,
+                        pointBounds: button.bounds
+                    )
+                    assertMetricInkHasVerticalPadding(orangeRows, in: bitmap)
+                    assertMetricInkHasVerticalPadding(blueRows, in: bitmap)
+                    // NSBitmapImageRep row zero is the visual top edge. The
+                    // orange attention count must end above the first blue
+                    // running row.
+                    XCTAssertLessThan(
+                        try XCTUnwrap(orangeRows.max()),
+                        try XCTUnwrap(blueRows.min()),
+                        "Metric rows must remain visibly separated"
+                    )
+                }
                 let pngData = try XCTUnwrap(
                     bitmap.representation(using: .png, properties: [:])
                 )
@@ -255,14 +264,16 @@ final class StatusItemPresentationTests: XCTestCase {
         let zeroContentView = try XCTUnwrap(
             zeroButton.subviews.compactMap { $0 as? StatusItemContentView }.first
         )
-        XCTAssertEqual(zeroContentView.activeTitle, "0")
-        XCTAssertEqual(zeroContentView.recentCompletedTitle, "0")
-        try render(zeroButton, variant: "zero")
+        XCTAssertEqual(zeroContentView.attentionTitle, "0")
+        XCTAssertEqual(zeroContentView.runningTitle, "0")
+        // Zero counts render dimmed on purpose: a gray 0 is information, an
+        // orange 0 is a false demand.
+        try render(zeroButton, variant: "zero", expectsColoredInk: false)
 
         let twoDigitTasks = (0..<12).map {
-            makeTask(id: "render-running-two-digit-\($0)", state: .running)
+            makeTask(id: "render-waiting-two-digit-\($0)", state: .waitingForAnswer)
         } + (0..<34).map {
-            makeTask(id: "render-completed-two-digit-\($0)", state: .completed)
+            makeTask(id: "render-running-two-digit-\($0)", state: .running)
         }
         let twoDigitSnapshot = TaskSnapshot(
             tasks: twoDigitTasks,
@@ -278,14 +289,14 @@ final class StatusItemPresentationTests: XCTestCase {
         let twoDigitContentView = try XCTUnwrap(
             twoDigitButton.subviews.compactMap { $0 as? StatusItemContentView }.first
         )
-        XCTAssertEqual(twoDigitContentView.activeTitle, "12")
-        XCTAssertEqual(twoDigitContentView.recentCompletedTitle, "34")
+        XCTAssertEqual(twoDigitContentView.attentionTitle, "12")
+        XCTAssertEqual(twoDigitContentView.runningTitle, "34")
         try render(twoDigitButton, variant: "two-digit")
 
         let maxTasks = (0..<100).map {
-            makeTask(id: "render-running-\($0)", state: .running)
+            makeTask(id: "render-waiting-\($0)", state: .waitingForApproval)
         } + (0..<100).map {
-            makeTask(id: "render-completed-\($0)", state: .completed)
+            makeTask(id: "render-running-\($0)", state: .running)
         }
         let maxSnapshot = TaskSnapshot(tasks: maxTasks, refreshedAt: .now, health: [])
         let maxMonitor = TaskMonitor(
@@ -301,8 +312,8 @@ final class StatusItemPresentationTests: XCTestCase {
         XCTAssertEqual(maxButton.frame.width, 42, accuracy: 0.01)
         XCTAssertTrue(maxButton.title.isEmpty)
         XCTAssertEqual(maxButton.attributedTitle.length, 0)
-        XCTAssertEqual(maxContentView.activeTitle, "99+")
-        XCTAssertEqual(maxContentView.recentCompletedTitle, "99+")
+        XCTAssertEqual(maxContentView.attentionTitle, "99+")
+        XCTAssertEqual(maxContentView.runningTitle, "99+")
         try render(maxButton, variant: "max")
     }
 
@@ -413,8 +424,9 @@ final class StatusItemPresentationTests: XCTestCase {
                 switch channel {
                 case .blue:
                     isMatch = blue > 0.25 && blue > green + 0.08 && blue > red + 0.15
-                case .green:
-                    isMatch = green > 0.25 && green > blue + 0.08 && green > red + 0.08
+                case .orange:
+                    isMatch = red > 0.35 && red > blue + 0.2 && red > green + 0.08
+                        && green > blue + 0.05
                 }
                 if isMatch {
                     matchingRows.append(y)
@@ -487,10 +499,11 @@ final class StatusItemPresentationTests: XCTestCase {
                     isMatch = color.blueComponent > 0.25
                         && color.blueComponent > color.greenComponent + 0.08
                         && color.blueComponent > color.redComponent + 0.15
-                case .green:
-                    isMatch = color.greenComponent > 0.25
-                        && color.greenComponent > color.blueComponent + 0.08
-                        && color.greenComponent > color.redComponent + 0.08
+                case .orange:
+                    isMatch = color.redComponent > 0.35
+                        && color.redComponent > color.blueComponent + 0.2
+                        && color.redComponent > color.greenComponent + 0.08
+                        && color.greenComponent > color.blueComponent + 0.05
                 }
                 if isMatch { count += 1 }
             }
@@ -539,11 +552,11 @@ final class StatusItemPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.indicatorState, .waitingAction)
         XCTAssertEqual(
             presentation.accessibilityLabel,
-            "LLM Pulse，正在运行 3 个任务，最近完成 1 个任务，需要你处理 2 个任务"
+            "LLM Pulse，需要你处理 2 个任务，正在运行 1 个任务，最近完成 1 个任务"
         )
         XCTAssertEqual(
             presentation.toolTip,
-            "LLM Pulse · 正在运行 3 · 最近完成 1 · 需要你处理 2"
+            "LLM Pulse · 需要你处理 2 · 正在运行 1 · 最近完成 1"
         )
     }
 
@@ -562,8 +575,8 @@ final class StatusItemPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.waitingActionCount, 0)
         XCTAssertFalse(presentation.hasWaitingAction)
         XCTAssertEqual(presentation.indicatorState, .normal)
-        XCTAssertFalse(presentation.accessibilityLabel.contains("需要你处理"))
-        XCTAssertFalse(presentation.toolTip.contains("需要你处理"))
+        XCTAssertTrue(presentation.accessibilityLabel.contains("需要你处理 0 个任务"))
+        XCTAssertTrue(presentation.toolTip.contains("需要你处理 0"))
     }
 
     func testAttentionSelectorPrioritizesApprovalThenNewestAnswer() throws {
@@ -602,7 +615,7 @@ final class StatusItemPresentationTests: XCTestCase {
 
 private enum StatusItemMetricChannel {
     case blue
-    case green
+    case orange
 }
 
 private actor StatusItemRenderRepository: TaskRepositoryProtocol {
