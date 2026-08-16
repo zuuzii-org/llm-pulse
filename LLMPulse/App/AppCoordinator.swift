@@ -47,15 +47,6 @@ final class AppCoordinator {
             modelSelection: modelSelection,
             panelVisibilityState: panelVisibilityState,
             onOpenTask: { [weak self] task in self?.openTask(task) ?? false },
-            onMarkViewed: { [weak monitor] task in monitor?.markViewed(task: task) },
-            onMarkAllViewed: { [weak monitor] tasks in
-                guard let monitor else { return false }
-                return await monitor.markViewedAndRefresh(tasks: tasks)
-            },
-            onUndoMarkViewed: { [weak monitor] tasks in
-                guard let monitor else { return false }
-                return await monitor.unmarkViewedAndRefresh(tasks: tasks)
-            },
             onDismiss: { [weak self] in self?.panelController.hide() },
             onOpenSettings: { [weak self] in self?.openSettings() }
         )

@@ -14,16 +14,16 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            Section("语言") {
+            Section {
                 Picker("应用语言", selection: $settings.appLanguage) {
                     ForEach(AppLanguage.allCases) { language in
                         Text(language.displayName(in: settings.appLanguage)).tag(language)
                     }
                 }
-
+            } header: {
+                Text("语言")
+            } footer: {
                 Text("切换后立即应用，无需重新启动。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             Section("触边") {
@@ -70,16 +70,15 @@ struct SettingsView: View {
                     }
                 }
 
-                Picker("提醒范围", selection: $settings.notificationAttentionLevel) {
+                Picker(selection: $settings.notificationAttentionLevel) {
                     ForEach(NotificationAttentionLevel.allCases) { level in
                         Text(level.title(language: settings.appLanguage)).tag(level)
                     }
+                } label: {
+                    Text("提醒范围")
+                    Text(settings.notificationAttentionLevel.detail(language: settings.appLanguage))
                 }
                 .disabled(!settings.notificationsEnabled)
-
-                Text(settings.notificationAttentionLevel.detail(language: settings.appLanguage))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
 
                 Toggle("播放通知声音", isOn: $settings.notificationSoundEnabled)
                     .disabled(!settings.notificationsEnabled)
@@ -101,7 +100,7 @@ struct SettingsView: View {
                 }
             }
 
-            Section("会员") {
+            Section {
                 membershipOverrideControls(
                     title: "Codex",
                     profileID: .codex
@@ -110,9 +109,10 @@ struct SettingsView: View {
                     title: "Claude Code",
                     profileID: ModelIdentity.claudeCode.profileID
                 )
+            } header: {
+                Text("会员")
+            } footer: {
                 Text("填写后覆盖自动推导的续费日；留空则按订阅起始日按月推算。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             Section("系统") {
@@ -136,10 +136,13 @@ struct SettingsView: View {
                 }
             }
 
-            Section("隐私") {
-                Text("V1 只读取本机 Codex 桌面版任务数据。LLM Pulse 仅写入自己的未查看状态与偏好设置，不修改 Codex 任务记录。")
-                    .foregroundStyle(.secondary)
+            Section {
+                Text("任务和使用数据只从本机读取")
                     .fixedSize(horizontal: false, vertical: true)
+            } header: {
+                Text("隐私")
+            } footer: {
+                Text("V1 只读取本机 Codex 桌面版任务数据。LLM Pulse 仅写入自己的未查看状态与偏好设置，不修改 Codex 任务记录。")
             }
         }
         .formStyle(.grouped)

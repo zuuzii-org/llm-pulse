@@ -58,14 +58,14 @@ Users on v1.0.0 must install v1.1.0 manually once because v1.0.0 did not include
 - **A full-height task sidebar.** Hold the pointer at the middle 60% of the current display’s right edge for about 200 ms. The 400 px panel opens on the display under the pointer and avoids internal seams between adjacent displays.
 - **Clear task groups.** Running, waiting for approval, waiting for an answer, and recent tasks remain visually distinct. Running and recent sections can be folded independently, and their state is restored at the next launch.
 - **Useful task context.** Each row shows the project, session, elapsed time, latest state, cumulative token use, and the active total for the main agent plus descendant agents.
-- **Codex weekly usage.** The usage card shows the remaining weekly percentage, an exact reset date and time in the Mac’s current time zone, and data freshness.
+- **Codex weekly usage.** The usage card shows the remaining weekly percentage, an exact reset date and time in Beijing time (UTC+8), and data freshness.
 - **Direct task navigation.** Clicking a row opens the matching task through `codex://threads/<thread-id>`. A completion is marked viewed automatically only after the task opens successfully.
 - **Native notifications.** Choose attention-only, important, or all recognizable states. Notifications support task actions, 15-minute or 1-hour snooze, quiet completion summaries, and weekly usage warnings.
 - **Two runtimes, one panel.** Codex Desktop tasks and Claude Code sessions are observed side by side. Swipe left or right with two fingers, or press Control+Left/Right, to switch model pages. Menu bar totals stay global across both.
 - **Project controls.** Focus the panel on one Git project or mute that project’s notifications for an hour or until the next day. Menu bar totals remain global.
 - **macOS behavior.** Launch at login, multiple displays, reduced-motion support, configurable edge triggering in full-screen apps, and instant English/Simplified Chinese switching are built in.
 
-Recent tasks remain available for 24 hours, up to 20 items. Unviewed successful tasks receive retention priority, and a batch acknowledgement can be undone for six seconds.
+The panel shows active work only — running tasks and tasks waiting on you. Completions and failures are delivered as notifications rather than kept in a list.
 
 ## How it works
 
@@ -152,7 +152,7 @@ Subagents do not appear as separate rows. LLM Pulse aggregates the active main a
 
 ### What does the weekly percentage mean?
 
-It is the remaining percentage calculated from the Codex-reported used percentage, together with the weekly reset time. It is not an absolute token balance. Reset dates and times use the Mac’s current system time zone.
+It is the remaining percentage calculated from the Codex-reported used percentage, together with the weekly reset time. It is not an absolute token balance. Reset dates and times are shown in Beijing time (UTC+8).
 
 ### How does LLM Pulse read the Codex weekly usage limit?
 

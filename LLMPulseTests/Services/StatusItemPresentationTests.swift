@@ -42,7 +42,10 @@ final class StatusItemPresentationTests: XCTestCase {
 
         XCTAssertEqual(presentation.title, "0\n99+")
         XCTAssertTrue(presentation.accessibilityLabel.contains("正在运行 100 个任务"))
-        XCTAssertTrue(presentation.accessibilityLabel.contains("最近完成 100 个任务"))
+        XCTAssertFalse(
+            presentation.accessibilityLabel.contains("最近完成"),
+            "Completed counts left the menu bar entirely."
+        )
     }
 
     func testCompactCountsKeepZeroOneAndTwoDigitValuesUnpadded() {
@@ -552,11 +555,11 @@ final class StatusItemPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.indicatorState, .waitingAction)
         XCTAssertEqual(
             presentation.accessibilityLabel,
-            "LLM Pulse，需要你处理 2 个任务，正在运行 1 个任务，最近完成 1 个任务"
+            "LLM Pulse，需要你处理 2 个任务，正在运行 1 个任务"
         )
         XCTAssertEqual(
             presentation.toolTip,
-            "LLM Pulse · 需要你处理 2 · 正在运行 1 · 最近完成 1"
+            "LLM Pulse · 需要你处理 2 · 正在运行 1"
         )
     }
 

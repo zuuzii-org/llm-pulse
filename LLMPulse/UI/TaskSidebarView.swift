@@ -21,20 +21,13 @@ struct TaskSidebarView: View {
     let panelVisibilityState: TaskPanelVisibilityState
 
     let onOpenTask: (PulseTask) -> Bool
-    let onMarkViewed: (PulseTask) -> Void
-    let onMarkAllViewed: ([PulseTask]) async -> Bool
-    let onUndoMarkViewed: ([PulseTask]) async -> Bool
     let onDismiss: () -> Void
     let onOpenSettings: () -> Void
 
     @FocusState private var focusedTaskID: String?
-    @AccessibilityFocusState private var undoAccessibilityFocused: Bool
     @State private var openErrorMessage: String?
     @State private var expandedTaskIDs: Set<String> = []
     @State private var selectedProjectDirectory: String?
-    @State private var undoViewedBatch: ViewedUndoBatch?
-    @State private var undoDismissTask: Task<Void, Never>?
-    @State private var receiptMutationInFlight = false
     @State private var muteStateDate = Date.now
     @State private var hasAttemptedInitialTaskFocus = false
 
@@ -52,9 +45,6 @@ struct TaskSidebarView: View {
         modelSelection: ModelSelectionStore = ModelSelectionStore(),
         panelVisibilityState: TaskPanelVisibilityState = TaskPanelVisibilityState(),
         onOpenTask: @escaping (PulseTask) -> Bool,
-        onMarkViewed: @escaping (PulseTask) -> Void,
-        onMarkAllViewed: @escaping ([PulseTask]) async -> Bool,
-        onUndoMarkViewed: @escaping ([PulseTask]) async -> Bool,
         onDismiss: @escaping () -> Void,
         onOpenSettings: @escaping () -> Void
     ) {
@@ -63,9 +53,6 @@ struct TaskSidebarView: View {
         self.modelSelection = modelSelection
         self.panelVisibilityState = panelVisibilityState
         self.onOpenTask = onOpenTask
-        self.onMarkViewed = onMarkViewed
-        self.onMarkAllViewed = onMarkAllViewed
-        self.onUndoMarkViewed = onUndoMarkViewed
         self.onDismiss = onDismiss
         self.onOpenSettings = onOpenSettings
     }
@@ -94,18 +81,8 @@ struct TaskSidebarView: View {
             .sorted(by: runningTaskSort)
     }
 
-    private var allRecentTasks: [PulseTask] {
-        snapshot.tasks
-            .filter { $0.state.isTerminal }
-            .sorted(by: recentTaskSort)
-    }
-
     private var runningTasks: [PulseTask] {
         filterToSelectedProject(allRunningTasks)
-    }
-
-    private var recentTasks: [PulseTask] {
-        filterToSelectedProject(allRecentTasks)
     }
 
     private var attentionTasks: [PulseTask] {
@@ -120,12 +97,8 @@ struct TaskSidebarView: View {
         }
     }
 
-    private var unreadRecentTasks: [PulseTask] {
-        recentTasks.filter { $0.state == .completed && $0.isUnread }
-    }
-
     private var relevantTaskCount: Int {
-        allRunningTasks.count + allRecentTasks.count
+        allRunningTasks.count
     }
 
     private var projectOptions: [ProjectScopeOption] {
@@ -249,11 +222,6 @@ struct TaskSidebarView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            if let undoViewedBatch {
-                undoBanner(undoViewedBatch)
-                    .transition(reduceMotion ? .identity : .move(edge: .bottom).combined(with: .opacity))
-            }
-
             Divider().opacity(0.45)
             footer
         }
@@ -299,16 +267,9 @@ struct TaskSidebarView: View {
         .onChange(of: settings.runningSectionExpanded) { _, _ in
             preserveVisibleFocus()
         }
-        .onChange(of: settings.recentSectionExpanded) { _, _ in
-            preserveVisibleFocus()
-        }
         .onReceive(muteStateTimer) { date in
             muteStateDate = date
             settings.cleanupExpiredProjectMutes(asOf: date)
-        }
-        .onDisappear {
-            undoDismissTask?.cancel()
-            undoDismissTask = nil
         }
     }
 
@@ -587,7 +548,6 @@ struct TaskSidebarView: View {
         ScrollView(.vertical, showsIndicators: true) {
             LazyVStack(spacing: 15) {
                 runningSection
-                recentSection
             }
             .padding(.horizontal, 16)
             .padding(.top, 2)
@@ -596,49 +556,14 @@ struct TaskSidebarView: View {
     }
 
     private var runningSection: some View {
-        taskGroupSection(
+        TaskGroupSection(
             descriptor: .running,
             tasks: runningTasks,
-            onMarkAllViewed: nil,
-            isMarkingAllViewed: false
-        )
-    }
-
-    private var recentSection: some View {
-        let bulkAction: (() -> Void)?
-        if unreadRecentTasks.count >= 2 {
-            bulkAction = { markAllVisibleViewed() }
-        } else {
-            bulkAction = nil
-        }
-
-        return taskGroupSection(
-            descriptor: .recent,
-            tasks: recentTasks,
-            onMarkAllViewed: bulkAction,
-            isMarkingAllViewed: receiptMutationInFlight && undoViewedBatch == nil
-        )
-    }
-
-    private func taskGroupSection(
-        descriptor: TaskGroupDescriptor,
-        tasks: [PulseTask],
-        onMarkAllViewed: (() -> Void)?,
-        isMarkingAllViewed: Bool
-    ) -> some View {
-        TaskGroupSection(
-            descriptor: descriptor,
-            tasks: tasks,
-            isExpanded: descriptor.id == TaskGroupDescriptor.running.id
-                ? $settings.runningSectionExpanded
-                : $settings.recentSectionExpanded,
+            isExpanded: $settings.runningSectionExpanded,
             focusedTaskID: $focusedTaskID,
             expandedTaskIDs: expandedTaskIDs,
             onOpenTask: openTask,
             onToggleExpanded: toggleExpanded,
-            onMarkViewed: onMarkViewed,
-            onMarkAllViewed: onMarkAllViewed,
-            isMarkingAllViewed: isMarkingAllViewed,
             onFocusProject: focusProject,
             projectAccessibilityName: projectAccessibilityName,
             isProjectMuted: isProjectMuted,
@@ -699,7 +624,7 @@ struct TaskSidebarView: View {
         ContentUnavailableView {
             Label("暂时没有任务", systemImage: "checkmark.circle")
         } description: {
-            Text("正在运行、等待操作和最近完成的任务会显示在这里。")
+            Text("正在运行和等待操作的任务会显示在这里。")
         } actions: {
             Button("重新检查") {
                 monitor.refresh()
@@ -746,51 +671,15 @@ struct TaskSidebarView: View {
         .padding(.vertical, 12)
     }
 
-    private func undoBanner(_ batch: ViewedUndoBatch) -> some View {
-        HStack(spacing: 9) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-                .accessibilityHidden(true)
-
-            Text(PulseL10n.text(
-                "已将 %d 个任务标记为已查看",
-                language: settings.appLanguage,
-                batch.tasks.count
-            ))
-                .font(.caption.weight(.medium))
-
-            Spacer(minLength: 8)
-
-            if receiptMutationInFlight {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel("正在更新已查看状态")
-            } else {
-                Button("撤销") {
-                    undoViewed(batch)
-                }
-                .buttonStyle(.plain)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
-                .accessibilityHint("恢复这些任务的未查看状态")
-                .accessibilityFocused($undoAccessibilityFocused)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 9)
-        .background(Color.green.opacity(0.08))
-        .overlay(alignment: .top) {
-            Divider().opacity(0.45)
-        }
-        .accessibilityElement(children: .contain)
-    }
-
     private var statusSummary: String {
-        PulseL10n.text(
-            "%d 个运行中 · %d 个最近完成",
+        let waiting = snapshot.tasks.lazy.filter {
+            $0.state == .waitingForApproval || $0.state == .waitingForAnswer
+        }.count
+        return PulseL10n.text(
+            "待处理 %d · 运行 %d",
             language: settings.appLanguage,
-            snapshot.activeCount,
-            snapshot.recentCompletedCount
+            waiting,
+            max(0, snapshot.activeCount - waiting)
         )
     }
 
@@ -841,14 +730,6 @@ struct TaskSidebarView: View {
         return lhs.id < rhs.id
     }
 
-    private func recentTaskSort(_ lhs: PulseTask, _ rhs: PulseTask) -> Bool {
-        if lhs.isUnread != rhs.isUnread { return lhs.isUnread }
-        let leftDate = lhs.completedAt ?? lhs.updatedAt
-        let rightDate = rhs.completedAt ?? rhs.updatedAt
-        if leftDate != rightDate { return leftDate > rightDate }
-        return lhs.id < rhs.id
-    }
-
     private func focusFirstTask() {
         guard !hasAttemptedInitialTaskFocus else { return }
         guard focusedTaskID == nil else { return }
@@ -868,9 +749,7 @@ struct TaskSidebarView: View {
     private var visibleFocusableTaskIDs: [String] {
         TaskSidebarSectionState.visibleTaskIDs(
             runningTaskIDs: runningTasks.map(\.id),
-            recentTaskIDs: recentTasks.map(\.id),
-            runningSectionExpanded: settings.runningSectionExpanded,
-            recentSectionExpanded: settings.recentSectionExpanded
+            runningSectionExpanded: settings.runningSectionExpanded
         )
     }
 
@@ -887,7 +766,7 @@ struct TaskSidebarView: View {
             self.selectedProjectDirectory = nil
         }
 
-        let taskIDs = Set((runningTasks + recentTasks).map(\.id))
+        let taskIDs = Set(runningTasks.map(\.id))
         if let focusedTaskID, !taskIDs.contains(focusedTaskID) {
             self.focusedTaskID = firstVisibleTaskID
         } else {
@@ -963,81 +842,6 @@ struct TaskSidebarView: View {
         settings.muteProject(directory, until: tomorrow)
     }
 
-    private func markAllVisibleViewed() {
-        let tasks = unreadRecentTasks
-        guard tasks.count >= 2, !receiptMutationInFlight else { return }
-        receiptMutationInFlight = true
-
-        Task { @MainActor in
-            let succeeded = await onMarkAllViewed(tasks)
-            receiptMutationInFlight = false
-            guard succeeded else {
-                openErrorMessage = PulseL10n.text(
-                    "批量标记失败，未查看状态没有改变。请稍后重试。",
-                    language: settings.appLanguage
-                )
-                return
-            }
-
-            let batch = ViewedUndoBatch(tasks: tasks)
-            let show = { undoViewedBatch = batch }
-            if reduceMotion {
-                show()
-            } else {
-                withAnimation(.easeOut(duration: 0.18), show)
-            }
-            undoAccessibilityFocused = true
-            scheduleUndoDismiss(for: batch.id)
-        }
-    }
-
-    private func undoViewed(_ batch: ViewedUndoBatch) {
-        guard !receiptMutationInFlight else { return }
-        undoDismissTask?.cancel()
-        undoDismissTask = nil
-        receiptMutationInFlight = true
-
-        Task { @MainActor in
-            let succeeded = await onUndoMarkViewed(batch.tasks)
-            receiptMutationInFlight = false
-            if succeeded {
-                dismissUndoBatch(batch.id)
-            } else {
-                openErrorMessage = PulseL10n.text(
-                    "撤销失败，任务仍保持已查看。请稍后重试。",
-                    language: settings.appLanguage
-                )
-                undoAccessibilityFocused = true
-            }
-        }
-    }
-
-    private func scheduleUndoDismiss(for id: UUID) {
-        undoDismissTask?.cancel()
-        undoDismissTask = Task { @MainActor in
-            do {
-                try await Task.sleep(for: .seconds(6))
-            } catch {
-                return
-            }
-            guard !receiptMutationInFlight else { return }
-            dismissUndoBatch(id)
-        }
-    }
-
-    private func dismissUndoBatch(_ id: UUID) {
-        guard undoViewedBatch?.id == id else { return }
-        undoDismissTask?.cancel()
-        undoDismissTask = nil
-        undoAccessibilityFocused = false
-        let dismiss = { undoViewedBatch = nil }
-        if reduceMotion {
-            dismiss()
-        } else {
-            withAnimation(.easeIn(duration: 0.14), dismiss)
-        }
-    }
-
     private func openTask(_ task: PulseTask) {
         if onOpenTask(task) {
             openErrorMessage = nil
@@ -1054,12 +858,9 @@ struct TaskSidebarView: View {
 enum TaskSidebarSectionState {
     static func visibleTaskIDs(
         runningTaskIDs: [String],
-        recentTaskIDs: [String],
-        runningSectionExpanded: Bool,
-        recentSectionExpanded: Bool
+        runningSectionExpanded: Bool
     ) -> [String] {
-        (runningSectionExpanded ? runningTaskIDs : [])
-            + (recentSectionExpanded ? recentTaskIDs : [])
+        runningSectionExpanded ? runningTaskIDs : []
     }
 
     static func preservedExpandedTaskIDs(
@@ -1076,11 +877,6 @@ private struct ProjectScopeOption: Identifiable, Equatable {
     let menuTitle: String
 
     var id: String { directory }
-}
-
-private struct ViewedUndoBatch: Identifiable {
-    let id = UUID()
-    let tasks: [PulseTask]
 }
 
 private struct ProjectScopeBar: View {
@@ -1298,19 +1094,14 @@ private struct ModelUsageCard: View {
         .accessibilityLabel(planUsageAccessibilityText(title: title, window: window))
     }
 
-    /// "约 周四 21:00 重置" for the weekly window, "约 01:03 重置" for the
-    /// five-hour one — a weekday on a window that resets within hours would
-    /// only add noise.
+    /// "约 8月23日 20:59 重置" — a full date and clock time on the product's
+    /// display timezone, the same for both windows so the two rows read as
+    /// one system.
     private func planUsageResetText(_ resetsAt: Date, window: PlanUsageWindow) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = language.locale
-        formatter.setLocalizedDateFormatFromTemplate(
-            window.windowMinutes >= 24 * 60 ? "EEEjmm" : "jmm"
-        )
-        return PulseL10n.text(
+        PulseL10n.text(
             "约 %@ 重置",
             language: language,
-            formatter.string(from: resetsAt)
+            PulseDisplayClock.concrete(resetsAt, language: language)
         )
     }
 
@@ -1408,10 +1199,7 @@ private struct MembershipRowView: View {
     }
 
     private static func format(_ date: Date, language: AppLanguage) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = language.locale
-        formatter.setLocalizedDateFormatFromTemplate("MMMd")
-        return formatter.string(from: date)
+        PulseDisplayClock.day(date, language: language)
     }
 }
 
@@ -1608,9 +1396,6 @@ private struct TaskGroupSection: View {
     let expandedTaskIDs: Set<String>
     let onOpenTask: (PulseTask) -> Void
     let onToggleExpanded: (PulseTask) -> Void
-    let onMarkViewed: (PulseTask) -> Void
-    var onMarkAllViewed: (() -> Void)? = nil
-    let isMarkingAllViewed: Bool
     let onFocusProject: (PulseTask) -> Void
     let projectAccessibilityName: (PulseTask) -> String
     let isProjectMuted: (PulseTask) -> Bool
@@ -1647,24 +1432,6 @@ private struct TaskGroupSection: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityIdentifier("task-group-\(descriptor.id)-disclosure")
 
-                if isMarkingAllViewed {
-                    HStack(spacing: 5) {
-                        ProgressView()
-                            .controlSize(.mini)
-                        Text("正在标记")
-                            .font(.caption.weight(.medium))
-                    }
-                    .foregroundStyle(.secondary)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("正在将完成任务标记为已查看")
-                } else if let onMarkAllViewed {
-                    Button("全部已查看", action: onMarkAllViewed)
-                        .buttonStyle(.plain)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.accentColor)
-                        .help("将当前范围内所有未查看的完成任务标记为已查看")
-                        .accessibilityHint("操作后可在短时间内撤销")
-                }
             }
             .padding(.horizontal, 2)
 
@@ -1687,7 +1454,6 @@ private struct TaskGroupSection: View {
                                 projectAccessibilityName: projectAccessibilityName(task),
                                 onOpenTask: { onOpenTask(task) },
                                 onToggleExpanded: { onToggleExpanded(task) },
-                                onMarkViewed: { onMarkViewed(task) },
                                 onFocusProject: { onFocusProject(task) },
                                 onMuteProjectForOneHour: { onMuteProjectForOneHour(task) },
                                 onMuteProjectUntilTomorrow: { onMuteProjectUntilTomorrow(task) },
@@ -1737,7 +1503,6 @@ private struct TaskListItem: View {
     let projectAccessibilityName: String
     let onOpenTask: () -> Void
     let onToggleExpanded: () -> Void
-    let onMarkViewed: () -> Void
     let onFocusProject: () -> Void
     let onMuteProjectForOneHour: () -> Void
     let onMuteProjectUntilTomorrow: () -> Void
@@ -1787,23 +1552,6 @@ private struct TaskListItem: View {
                     .accessibilityLabel(isExpanded ? "收起 token 明细" : "展开 token 明细")
                 }
 
-                if task.state == .completed, task.isUnread {
-                    Button(action: onMarkViewed) {
-                        Image(systemName: "eye")
-                            .font(.system(size: 12, weight: .medium))
-                            .frame(width: 32, height: 34)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .padding(.trailing, 4)
-                    .help("标记为已查看")
-                    .accessibilityLabel(PulseL10n.text(
-                        "将 %@ 标记为已查看",
-                        language: language,
-                        task.title
-                    ))
-                }
             }
 
             if isExpanded, let tokenUsage = task.tokenUsage {
@@ -1880,11 +1628,6 @@ private struct TaskRowSummary: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
-            Circle()
-                .fill(task.isUnread ? Color.accentColor : Color.clear)
-                .frame(width: 6, height: 6)
-                .accessibilityHidden(true)
-
             stateIcon
 
             VStack(alignment: .leading, spacing: 2) {
@@ -2088,12 +1831,6 @@ private struct TaskGroupDescriptor {
         emptyMessage: "没有正在运行或等待操作的任务"
     )
 
-    static let recent = TaskGroupDescriptor(
-        id: "recent",
-        title: "最近完成",
-        color: .green,
-        emptyMessage: "还没有最近完成的任务"
-    )
 }
 
 private enum TaskSidebarPalette {
@@ -2189,9 +1926,6 @@ private extension PulseTask {
             state.accessibilityDescription(language: language),
             activityDate.pulseRelativeDescription(language: language),
         ]
-        if isUnread {
-            components.append(PulseL10n.text("未查看", language: language))
-        }
         if let tokenUsage {
             components.append(PulseL10n.text(
                 "共 %@ tokens",

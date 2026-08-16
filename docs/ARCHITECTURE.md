@@ -121,7 +121,7 @@ Claude 模型页的用量卡片分两部分，二者的保证强度不同，因�
 | `UserPromptSubmit`、`task_started`、`PostToolUse` | `running` |
 | `task_complete` | `completed` |
 | `error` 且没有后续恢复或完成 | `failed` |
-| `turn_aborted` | `interrupted`，归入最近任务 |
+| `turn_aborted` | `interrupted`（终态，只参与通知，不再渲染行） |
 
 新证据覆盖旧证据。SQLite 中仍为 `open` 不能单独证明任务正在运行；运行态必须由 rollout 生命周期、有效 plugin 事件或其他受支持的当前证据确认。
 
@@ -137,14 +137,11 @@ Codex hooks 暂无单独的 approval-resolved 事件。`PermissionRequest` 后�
 - 精确状态显示 `Agent N`；尚待验证时显示 `~N`；短暂读取失败时保留上次成功值并标记过期；没有可信证据时显示 `Agent —`，绝不把未知伪装为 `0`。
 - 子 Agent 只参与聚合，不生成独立任务行，也不提供停止、重试或其他写操作。
 
-## 最近任务与未查看语义
+## 终态任务与回执语义
 
-- Codex 回执主键由 `thread_id + turn_id` 稳定构成；同一 thread 再次运行并完成后会产生新的未查看项。
-- 首次启动建立时间基线，不把历史完成任务批量标为未查看。
-- 只有成功通过 Codex deep link 打开具体任务或点击手动勾选后写入回执。
-- “全部已查看”在单一 SQLite 事务中批量写入；撤销只删除该批 LLM Pulse 回执，不接触 Codex 数据。
-- 完成、失败和中断任务统一保留 24 小时，最多展示 20 条；未查看的成功任务优先进入保留集合。
-- 标记已查看只更新 LLM Pulse 自有回执，任务仍保留到超出时间窗或数量上限。
+- 面板不再展示终态任务：完成、失败与中断只通过系统通知送达，通知的「标记已查看」动作仍写入回执。
+- 回执机制在数据层完整保留（`ReceiptStore`、`thread_id + turn_id` 主键、首启基线），供通知去重与可能的未来界面使用；保留策略（24h / 20 条 / 未读优先）继续在快照层生效，只是不再有对应的列表渲染。
+- Claude 行激活刻意不使用 `claude://resume`：该深链的语义是把 CLI 转录**导入**为一个新的桌面会话，其去重只认自己导入过的会话（前缀 + CLI id），对桌面原生会话每点一次就复制一个「General coding session」。桌面自身的会话 id 不落盘，无法从外部精确定位，因此点击 Claude 行只激活桌面应用。
 
 ## Token 与每周额度语义
 
@@ -157,7 +154,7 @@ Codex hooks 暂无单独的 approval-resolved 事件。`PermissionRequest` 后�
 ### Weekly
 
 - 当前 UI 和通知只展示 Codex weekly 窗口。weekly 通过 `windowDurationMins == 10080` 识别，不依赖 `primary` 或 `secondary` 的固定顺序。
-- 用量卡显示 `100 - used_percent` 的剩余百分比、数据新鲜度，以及按 macOS 当前系统时区格式化的准确重置日期和时间。
+- 用量卡显示 `100 - used_percent` 的剩余百分比、数据新鲜度，以及以北京时间（`PulseDisplayClock`，Asia/Shanghai）格式化的准确重置日期和时间。全部绝对时间展示统一走该时钟。
 - 通知只针对 weekly 产生阈值提醒；5 小时窗口不会渲染、不会生成通知，也不会替代 weekly。
 - App Server 首次连接期间显示“额度待刷新”。刷新失败时可保留尚未 reset 的最近可信 weekly；没有仍有效的官方值时，兼容 rollout 数据才作为兜底。
 - rollout 兜底只接受目标 Codex pool 中完整、未过期且来源一致的快照。存在互相冲突的有效 reset tuple 时返回“额度待刷新”，禁止按最高用量猜测。
@@ -180,7 +177,7 @@ Codex hooks 暂无单独的 approval-resolved 事件。`PermissionRequest` 后�
 
 - `NSStatusItem` 承载固定图标区与双行计数；右键菜单的“检查更新…”只调用 Sparkle 标准 updater，不改变任务状态。
 - 自定义 `NSPanel` 承载 400px 侧边栏，内容由 SwiftUI 构建。
-- “正在运行 / 最近任务”使用独立 disclosure；展开状态写入 LLM Pulse 自有 `UserDefaults`，折叠组不进入键盘焦点顺序。
+- 面板只渲染非终态任务（“正在运行”单一分组，含等待授权/回答）；完成与失败只通过通知送达。分组折叠状态写入 LLM Pulse 自有 `UserDefaults`，折叠时不进入键盘焦点顺序。
 - 面板展示来源分为 `statusItemClick`、`edgeHover` 与 `programmatic`。状态栏点击提供移入保护；进入面板后转为 hover hold，离开后使用短暂防抖。
 - 轻量轮询 `NSEvent.mouseLocation`，仅在右侧中间 60% 连续停留约 200ms 后触发。
 - 触边计算使用显示器全局几何；相邻显示器覆盖的右边缘不视为可触发边缘。

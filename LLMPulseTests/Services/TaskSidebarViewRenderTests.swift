@@ -59,9 +59,6 @@ final class TaskSidebarViewRenderTests: XCTestCase {
             monitor: monitor,
             settings: settings,
             onOpenTask: { _ in true },
-            onMarkViewed: { _ in },
-            onMarkAllViewed: { _ in true },
-            onUndoMarkViewed: { _ in true },
             onDismiss: {},
             onOpenSettings: {}
         )
@@ -129,7 +126,7 @@ final class TaskSidebarViewRenderTests: XCTestCase {
         )
     }
 
-    func testSectionsCollapseIndependentlyInRenderedPanel() throws {
+    func testRunningSectionCollapsesInRenderedPanel() throws {
         let suiteName = "TaskSidebarViewRenderTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -144,57 +141,31 @@ final class TaskSidebarViewRenderTests: XCTestCase {
 
         settings.runningSectionExpanded = false
         settle(hostingView, in: window)
-        let recentOnly = try renderBitmap(of: hostingView)
-
-        settings.runningSectionExpanded = true
-        settings.recentSectionExpanded = false
-        settle(hostingView, in: window)
-        let runningOnly = try renderBitmap(of: hostingView)
-
-        settings.runningSectionExpanded = false
-        settle(hostingView, in: window)
         let collapsed = try renderBitmap(of: hostingView)
 
-        XCTAssertGreaterThan(pixelDifference(expanded, recentOnly), 800)
-        XCTAssertGreaterThan(pixelDifference(expanded, runningOnly), 800)
-        XCTAssertGreaterThan(pixelDifference(recentOnly, collapsed), 800)
-        XCTAssertGreaterThan(pixelDifference(runningOnly, collapsed), 800)
+        XCTAssertGreaterThan(pixelDifference(expanded, collapsed), 800)
     }
 
-    func testCollapsedSectionsLeaveHiddenTasksOutOfFocusOrderAndPreserveRowExpansion() {
+    func testCollapsedSectionLeavesHiddenTasksOutOfFocusOrderAndPreservesRowExpansion() {
         let runningIDs = ["waiting", "running"]
-        let recentIDs = ["complete-a", "complete-b"]
 
         XCTAssertEqual(
             TaskSidebarSectionState.visibleTaskIDs(
                 runningTaskIDs: runningIDs,
-                recentTaskIDs: recentIDs,
-                runningSectionExpanded: false,
-                recentSectionExpanded: true
-            ),
-            recentIDs
-        )
-        XCTAssertEqual(
-            TaskSidebarSectionState.visibleTaskIDs(
-                runningTaskIDs: runningIDs,
-                recentTaskIDs: recentIDs,
-                runningSectionExpanded: true,
-                recentSectionExpanded: false
+                runningSectionExpanded: true
             ),
             runningIDs
         )
         XCTAssertTrue(
             TaskSidebarSectionState.visibleTaskIDs(
                 runningTaskIDs: runningIDs,
-                recentTaskIDs: recentIDs,
-                runningSectionExpanded: false,
-                recentSectionExpanded: false
+                runningSectionExpanded: false
             ).isEmpty
         )
         XCTAssertEqual(
             TaskSidebarSectionState.preservedExpandedTaskIDs(
                 ["running", "removed"],
-                existingTaskIDs: Set(runningIDs + recentIDs)
+                existingTaskIDs: Set(runningIDs)
             ),
             ["running"]
         )
@@ -210,7 +181,6 @@ final class TaskSidebarViewRenderTests: XCTestCase {
         var sampleCount = 0
         var opaqueCount = 0
         var blueCount = 0
-        var greenCount = 0
         var orangeCount = 0
         var chromaticRows = Set<Int>()
 
@@ -228,14 +198,12 @@ final class TaskSidebarViewRenderTests: XCTestCase {
                 let green = color.greenComponent
                 let blue = color.blueComponent
                 let isBlue = blue > 0.42 && blue > red + 0.12 && blue > green + 0.04
-                let isGreen = green > 0.34 && green > red + 0.08 && green > blue + 0.02
                 let isOrange = red > 0.58 && green > 0.22
                     && red > green + 0.10 && green > blue + 0.10
 
                 if isBlue { blueCount += 1 }
-                if isGreen { greenCount += 1 }
                 if isOrange { orangeCount += 1 }
-                if isBlue || isGreen || isOrange {
+                if isBlue || isOrange {
                     chromaticRows.insert(y)
                 }
             }
@@ -243,9 +211,8 @@ final class TaskSidebarViewRenderTests: XCTestCase {
 
         XCTAssertGreaterThan(Double(opaqueCount) / Double(sampleCount), 0.97, file: file, line: line)
         XCTAssertGreaterThan(blueCount, 40, file: file, line: line)
-        XCTAssertGreaterThan(greenCount, 20, file: file, line: line)
         XCTAssertGreaterThan(orangeCount, 20, file: file, line: line)
-        XCTAssertGreaterThan(chromaticRows.count, 30, file: file, line: line)
+        XCTAssertGreaterThan(chromaticRows.count, 20, file: file, line: line)
     }
 
     private func makeHostedSidebar(
@@ -260,9 +227,6 @@ final class TaskSidebarViewRenderTests: XCTestCase {
             monitor: monitor,
             settings: settings,
             onOpenTask: { _ in true },
-            onMarkViewed: { _ in },
-            onMarkAllViewed: { _ in true },
-            onUndoMarkViewed: { _ in true },
             onDismiss: {},
             onOpenSettings: {}
         )

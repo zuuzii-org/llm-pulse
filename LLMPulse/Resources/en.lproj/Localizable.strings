@@ -62,6 +62,7 @@
 "任务和额度数据只从本机读取" = "Task and usage data is read only from this Mac";
 "正在读取 Codex 桌面版任务和额度" = "Loading Codex Desktop tasks and usage limits";
 "暂时没有任务" = "No tasks right now";
+"正在运行和等待操作的任务会显示在这里。" = "Running and action-required tasks will appear here.";
 "正在运行、等待操作和最近完成的任务会显示在这里。" = "Running, action-required, and recently completed tasks will appear here.";
 "重新检查" = "Check Again";
 "暂时无法读取任务" = "Tasks are temporarily unavailable";
@@ -170,6 +171,7 @@
 "已到期" = "Expired";
 "手动指定 %@ 到期日" = "Set the %@ expiry date manually";
 "到期日" = "Expiry Date";
+"待处理 %d · 运行 %d" = "%d waiting · %d running";
 "填写后覆盖自动推导的续费日；留空则按订阅起始日按月推算。" = "A date entered here is shown exactly, replacing the derived renewal; leave it off to project monthly from the subscription start.";
 "模型数据源暂不可用" = "The model data source is temporarily unavailable";
 "模型数据源刷新超时或返回了无效身份" = "The model data source timed out or returned an invalid identity";

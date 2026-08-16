@@ -86,7 +86,6 @@ struct StatusItemPresentation: Equatable {
         var components = [
             PulseL10n.text("需要你处理 %d 个任务", language: language, waitingActionCount),
             PulseL10n.text("正在运行 %d 个任务", language: language, runningCount),
-            PulseL10n.text("最近完成 %d 个任务", language: language, recentCompletedCount),
         ]
         if hasFailures {
             components.append(PulseL10n.text("存在失败", language: language))
@@ -101,7 +100,6 @@ struct StatusItemPresentation: Equatable {
         var components = [
             PulseL10n.text("需要你处理 %d", language: language, waitingActionCount),
             PulseL10n.text("正在运行 %d", language: language, runningCount),
-            PulseL10n.text("最近完成 %d", language: language, recentCompletedCount),
         ]
         if hasFailures {
             components.append(PulseL10n.text("存在失败", language: language))
@@ -138,6 +136,7 @@ final class StatusItemController: NSObject {
     private let statusContentView = StatusItemContentView()
     private var attentionMenuItem: NSMenuItem?
     private var modelsMenuItem: NSMenuItem?
+    private var modelsMenuSeparator: NSMenuItem?
     private var modelMenuItems: [ModelProfileID: NSMenuItem] = [:]
     private var modelMenuOrder: [ModelProfileID] = []
     private var hubSnapshotCancellable: AnyCancellable?
@@ -235,69 +234,89 @@ final class StatusItemController: NSObject {
     private func configureMenu() {
         menu.removeAllItems()
         let language = settings?.appLanguage ?? .system
-        let attentionItem = NSMenuItem(
-            title: PulseL10n.text("打开下一条需处理任务", language: language),
-            action: #selector(openAttentionTask),
-            keyEquivalent: ""
+
+        // macOS 26 decorates system-recognized commands (Settings…) with an
+        // icon on its own. One decorated row against five bare ones reads as
+        // a misaligned column, so every command carries its symbol and the
+        // menu aligns as one system.
+        let openItem = makeItem(
+            title: PulseL10n.text("打开任务面板", language: language),
+            symbol: "sidebar.right",
+            action: #selector(openPanel)
         )
-        attentionItem.target = self
+        menu.addItem(openItem)
+
+        let attentionItem = makeItem(
+            title: PulseL10n.text("打开下一条需处理任务", language: language),
+            symbol: "bell.badge",
+            action: #selector(openAttentionTask)
+        )
         attentionItem.isHidden = true
         menu.addItem(attentionItem)
         attentionMenuItem = attentionItem
 
-        let modelsItem = NSMenuItem(
+        let refreshItem = makeItem(
+            title: PulseL10n.text("立即刷新", language: language),
+            symbol: "arrow.clockwise",
+            action: #selector(refresh),
+            keyEquivalent: "r"
+        )
+        menu.addItem(refreshItem)
+
+        // The model group sits between its own separators; both hide with it
+        // so a single-model menu never shows a doubled divider.
+        let modelsSeparator = NSMenuItem.separator()
+        modelsSeparator.isHidden = true
+        menu.addItem(modelsSeparator)
+        modelsMenuSeparator = modelsSeparator
+
+        let modelsItem = makeItem(
             title: PulseL10n.text("模型", language: language),
-            action: nil,
-            keyEquivalent: ""
+            symbol: "square.stack",
+            action: nil
         )
         modelsItem.submenu = modelSubmenu
         modelsItem.isHidden = true
         menu.addItem(modelsItem)
         modelsMenuItem = modelsItem
 
-        let openItem = NSMenuItem(
-            title: PulseL10n.text("打开任务面板", language: language),
-            action: #selector(openPanel),
-            keyEquivalent: ""
-        )
-        openItem.target = self
-        menu.addItem(openItem)
-
-        let refreshItem = NSMenuItem(
-            title: PulseL10n.text("立即刷新", language: language),
-            action: #selector(refresh),
-            keyEquivalent: "r"
-        )
-        refreshItem.target = self
-        menu.addItem(refreshItem)
-
         menu.addItem(.separator())
 
-        let checkForUpdatesItem = NSMenuItem(
+        menu.addItem(makeItem(
             title: PulseL10n.text("检查更新…", language: language),
-            action: #selector(checkForUpdates),
-            keyEquivalent: ""
-        )
-        checkForUpdatesItem.target = self
-        menu.addItem(checkForUpdatesItem)
-
-        let settingsItem = NSMenuItem(
+            symbol: "arrow.down.circle",
+            action: #selector(checkForUpdates)
+        ))
+        menu.addItem(makeItem(
             title: PulseL10n.text("设置…", language: language),
+            symbol: "gearshape",
             action: #selector(openSettings),
             keyEquivalent: ","
-        )
-        settingsItem.target = self
-        menu.addItem(settingsItem)
+        ))
 
         menu.addItem(.separator())
 
-        let quitItem = NSMenuItem(
+        menu.addItem(makeItem(
             title: PulseL10n.text("退出 LLM Pulse", language: language),
+            symbol: "power",
             action: #selector(quit),
             keyEquivalent: "q"
+        ))
+    }
+
+    private func makeItem(
+        title: String,
+        symbol: String,
+        action: Selector?,
+        keyEquivalent: String = ""
+    ) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
+        item.target = action == nil ? nil : self
+        item.image = NSImage(
+            systemSymbolName: symbol,
+            accessibilityDescription: nil
         )
-        quitItem.target = self
-        menu.addItem(quitItem)
+        return item
     }
 
     private func update(hubSnapshot: PulseHubSnapshot) {
@@ -330,6 +349,7 @@ final class StatusItemController: NSObject {
     private func updateModelSubmenu(with profiles: [ModelProfileSummary]) {
         let shouldShow = profiles.count > 1
         modelsMenuItem?.isHidden = !shouldShow
+        modelsMenuSeparator?.isHidden = !shouldShow
         guard shouldShow else {
             modelSubmenu.removeAllItems()
             modelMenuItems.removeAll()
@@ -354,8 +374,16 @@ final class StatusItemController: NSObject {
                 modelMenuItems[profile.id] = item
             }
         }
+        let language = settings?.appLanguage ?? .system
         for profile in profiles {
-            modelMenuItems[profile.id]?.title = "\(profile.identity.displayName)   ● \(profile.activeCount)   ✓ \(profile.recentCompletedCount)"
+            let running = max(0, profile.activeCount - profile.waitingActionCount)
+            modelMenuItems[profile.id]?.title = "\(profile.identity.displayName)  ·  "
+                + PulseL10n.text(
+                    "待处理 %d · 运行 %d",
+                    language: language,
+                    profile.waitingActionCount,
+                    running
+                )
         }
         updateModelMenuSelection()
     }

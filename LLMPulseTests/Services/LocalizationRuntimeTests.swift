@@ -81,6 +81,48 @@ final class LocalizationRuntimeTests: XCTestCase {
         )
     }
 
+    // MARK: - Display clock
+
+    /// CI runs in UTC, which is exactly what makes these worth pinning: a
+    /// formatter that silently falls back to the system zone renders 12:03
+    /// there and passes on any machine already set to Beijing time.
+    func testAbsoluteTimesRenderOnTheBeijingClock() throws {
+        let formatter = ISO8601DateFormatter()
+        let date = try XCTUnwrap(formatter.date(from: "2026-08-23T12:03:00Z"))
+
+        XCTAssertEqual(
+            PulseDisplayClock.concrete(date, language: .simplifiedChinese),
+            "8月23日 20:03"
+        )
+        // The English joiner ("Aug 23 at 20:03" vs "Aug 23, 20:03") belongs
+        // to the OS's locale data; only the facts are pinned.
+        let english = PulseDisplayClock.concrete(date, language: .english)
+        XCTAssertTrue(english.contains("Aug 23"), english)
+        XCTAssertTrue(english.contains("20:03"), english)
+        XCTAssertEqual(
+            PulseDisplayClock.day(date, language: .simplifiedChinese),
+            "8月23日"
+        )
+    }
+
+    func testTheQuotaResetDescriptionDefaultsToBeijingTime() throws {
+        let date = try XCTUnwrap(
+            ISO8601DateFormatter().date(from: "2026-08-23T12:03:00Z")
+        )
+
+        XCTAssertEqual(
+            date.pulseQuotaResetDescription(language: .simplifiedChinese),
+            date.pulseQuotaResetDescription(
+                timeZone: try XCTUnwrap(TimeZone(identifier: "Asia/Shanghai")),
+                language: .simplifiedChinese
+            )
+        )
+        XCTAssertTrue(
+            date.pulseQuotaResetDescription(language: .english).contains("20:03"),
+            "The clock reading must be Beijing's regardless of the host zone."
+        )
+    }
+
     // MARK: - Rendering
 
     private func render<Content: View>(

@@ -521,15 +521,7 @@ final class NotificationService {
             language: language,
             alert.threshold
         )
-        let resetText = alert.resetsAt.formatted(
-            .dateTime
-                .year()
-                .month()
-                .day()
-                .hour()
-                .minute()
-                .locale(language.locale)
-        )
+        let resetText = PulseDisplayClock.concrete(alert.resetsAt, language: language)
         content.body = PulseL10n.text("将在 %@ 重置。", language: language, resetText)
         content.categoryIdentifier = PulseNotificationCategory.quota
         content.threadIdentifier = "llm-pulse.quota.\(alert.windowMinutes)"

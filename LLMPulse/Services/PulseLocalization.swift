@@ -72,6 +72,38 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// The wall clock every absolute time in the product is rendered on.
+///
+/// Quota resets, inferred renewals, and expiry dates all display in Beijing
+/// time by explicit product decision — the audience lives there, and a
+/// traveling laptop changing what clock the same reset appears on would be
+/// worse than a fixed one. Relative descriptions ("3 分钟前") are unaffected.
+enum PulseDisplayClock {
+    static let timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .autoupdatingCurrent
+
+    /// A concrete moment: "8月23日 20:03" / "Aug 23, 20:03".
+    static func concrete(_ date: Date, language: AppLanguage) -> String {
+        formatted(date, language: language, template: "MMMdHm")
+    }
+
+    /// A concrete day: "9月6日" / "Sep 6".
+    static func day(_ date: Date, language: AppLanguage) -> String {
+        formatted(date, language: language, template: "MMMd")
+    }
+
+    private static func formatted(
+        _ date: Date,
+        language: AppLanguage,
+        template: String
+    ) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = language.locale
+        formatter.timeZone = timeZone
+        formatter.setLocalizedDateFormatFromTemplate(template)
+        return formatter.string(from: date)
+    }
+}
+
 enum PulseL10n {
     static func text(
         _ key: String,

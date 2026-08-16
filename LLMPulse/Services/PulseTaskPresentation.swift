@@ -94,7 +94,7 @@ extension RateLimitWindowSnapshot {
 extension Date {
     func pulseQuotaResetDescription(
         asOf _: Date = .now,
-        timeZone: TimeZone = .autoupdatingCurrent,
+        timeZone: TimeZone = PulseDisplayClock.timeZone,
         language: AppLanguage = .simplifiedChinese
     ) -> String {
         var calendar = Calendar(identifier: .gregorian)
