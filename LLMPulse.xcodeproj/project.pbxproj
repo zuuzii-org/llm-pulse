@@ -18,6 +18,7 @@
 		097F07FC926861205148E3A3 /* RolloutRateLimitSelectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 352855BDB1D1C8220487C5A8 /* RolloutRateLimitSelectorTests.swift */; };
 		0B196FF18ED4A95B64AD6058 /* ReceiptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E773E2BE49D59E5AFCDBAA31 /* ReceiptStore.swift */; };
 		0CDB1BB5A234D4A51F7E8687 /* AgentActivityBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCF993ECE64A8A82CF3FEE7 /* AgentActivityBadge.swift */; };
+		0CFA71FAC18D57B9D659CC15 /* ClaudeAccountReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C86317F048634125F6B1363 /* ClaudeAccountReader.swift */; };
 		0E1433724CE6F8099CF305E4 /* ClaudeTaskRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 899432766121A93ABC9C8EF6 /* ClaudeTaskRepositoryTests.swift */; };
 		0FD67A4DD6209A7DD41E54AE /* ClaudeSourceRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CEC7A5678F4C19651EB53EA /* ClaudeSourceRepository.swift */; };
 		1058244E1326CC651989A2E5 /* PulseHubRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9921A88DF71E4E26FC055D32 /* PulseHubRepositoryTests.swift */; };
@@ -28,6 +29,7 @@
 		2133BB4766A6C5C97E944AEA /* TaskPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00EFA1FF2D98363CE49F335E /* TaskPanelController.swift */; };
 		26462D1BEB2BB517244FD79F /* HorizontalModelSwipeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA53345E3E5B7275DADB7400 /* HorizontalModelSwipeState.swift */; };
 		2B7204B443CA35CCD7D0D74E /* PulseLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61F23CC0575ED93164527057 /* PulseLocalization.swift */; };
+		2DBD9E728AA5B0892764E376 /* Membership.swift in Sources */ = {isa = PBXBuildFile; fileRef = D59765696B42A96213E50DF6 /* Membership.swift */; };
 		2DCE60C209F3CE4A4370A957 /* TaskNavigator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EB791B6F3BD4179349C68C0 /* TaskNavigator.swift */; };
 		2E5959000BC21CB844189183 /* TaskOpeningServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7DD7E950DF931CDEC25DB38 /* TaskOpeningServiceTests.swift */; };
 		2E69BCFDD7CD622766D72EF7 /* TaskSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA4802BBEC778F6A343EF4AB /* TaskSnapshotTests.swift */; };
@@ -75,6 +77,7 @@
 		96B8A8593560023D28CC230C /* DataRecords.swift in Sources */ = {isa = PBXBuildFile; fileRef = 858E18EA01C2FFC6D86A1382 /* DataRecords.swift */; };
 		9B27A06B5ACB77167C6260A7 /* HorizontalModelSwipeStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 678F29B7D0469AB738105682 /* HorizontalModelSwipeStateTests.swift */; };
 		9F66508B5F43BE37C914413B /* RolloutJSONLTailParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9791DD2E1F24CAD502EC755F /* RolloutJSONLTailParser.swift */; };
+		A28C4333CA310936B577887F /* MembershipTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91C4DCD69999FBD941A5B22F /* MembershipTests.swift */; };
 		AB74609E3C580647D1624D07 /* ModelTaskRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D5176C511C357411D1F25BF /* ModelTaskRepository.swift */; };
 		AC63575D10D83423E00C873F /* TaskRetentionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EC82CFE276C183B4BB419D7 /* TaskRetentionPolicy.swift */; };
 		AFB98770CBD3769AF9687642 /* ClaudeLiveSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7EBADEB6E8333C2C42CCDBC /* ClaudeLiveSmokeTests.swift */; };
@@ -153,6 +156,7 @@
 		37648F07E7D3ADB0AA70F7E5 /* LLMPulseTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LLMPulseTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3822E278141C4A5576981C51 /* CodexPathsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexPathsTests.swift; sourceTree = "<group>"; };
 		3986103AF072D1993C537B27 /* PulseSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PulseSettings.swift; sourceTree = "<group>"; };
+		3C86317F048634125F6B1363 /* ClaudeAccountReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeAccountReader.swift; sourceTree = "<group>"; };
 		3E227DDF991DCD959636A9E2 /* PulseHubRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PulseHubRepository.swift; sourceTree = "<group>"; };
 		3E95267833EF326134BFA8AC /* CodexAgentActivityObserverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexAgentActivityObserverTests.swift; sourceTree = "<group>"; };
 		3EC82CFE276C183B4BB419D7 /* TaskRetentionPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskRetentionPolicy.swift; sourceTree = "<group>"; };
@@ -191,6 +195,7 @@
 		899432766121A93ABC9C8EF6 /* ClaudeTaskRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeTaskRepositoryTests.swift; sourceTree = "<group>"; };
 		90418DE5ED396A7775818780 /* TaskSidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskSidebarView.swift; sourceTree = "<group>"; };
 		911BE851C765C44F33BFDA7F /* ReceiptStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptStoreTests.swift; sourceTree = "<group>"; };
+		91C4DCD69999FBD941A5B22F /* MembershipTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MembershipTests.swift; sourceTree = "<group>"; };
 		93041F44EA250B1E817D6AA5 /* ModelUsageSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelUsageSnapshot.swift; sourceTree = "<group>"; };
 		9791DD2E1F24CAD502EC755F /* RolloutJSONLTailParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RolloutJSONLTailParser.swift; sourceTree = "<group>"; };
 		98A9A2F4977013834C617BE1 /* SQLiteConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteConnection.swift; sourceTree = "<group>"; };
@@ -217,6 +222,7 @@
 		CB0AE6B987EC5C5F6022E57D /* SessionIndexReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionIndexReader.swift; sourceTree = "<group>"; };
 		D491D7302F92654F582C15FD /* TaskMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskMonitor.swift; sourceTree = "<group>"; };
 		D4E6DECF52F9A50383201608 /* ClaudeTranscriptAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeTranscriptAdapter.swift; sourceTree = "<group>"; };
+		D59765696B42A96213E50DF6 /* Membership.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Membership.swift; sourceTree = "<group>"; };
 		D5FB04E8FABA656A70400780 /* CodexAccountRateLimitObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexAccountRateLimitObserver.swift; sourceTree = "<group>"; };
 		D7893B6147527801B9ADA1AE /* CodexRolloutAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexRolloutAdapterTests.swift; sourceTree = "<group>"; };
 		D7EBADEB6E8333C2C42CCDBC /* ClaudeLiveSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeLiveSmokeTests.swift; sourceTree = "<group>"; };
@@ -301,6 +307,7 @@
 			children = (
 				BF10C1E4BE51FF096342765E /* AdapterHealth.swift */,
 				7B6DE0A75835036786A82F33 /* AgentActivityObservation.swift */,
+				D59765696B42A96213E50DF6 /* Membership.swift */,
 				9A95B80C61182371AA9EAD6D /* ModelIdentity.swift */,
 				93041F44EA250B1E817D6AA5 /* ModelUsageSnapshot.swift */,
 				71301E749B7B75DBE05607A1 /* PulseHubSnapshot.swift */,
@@ -353,6 +360,7 @@
 			isa = PBXGroup;
 			children = (
 				0710D1F73F4CC9F0F565FAB1 /* AppServerCapability.swift */,
+				3C86317F048634125F6B1363 /* ClaudeAccountReader.swift */,
 				2F4D70B177CDDBCCDA3FCB84 /* ClaudeAgentActivityObserver.swift */,
 				DB0FCA032A4F215A997D3178 /* ClaudeDataRecords.swift */,
 				6B96D929EEACEAA1ECFEA817 /* ClaudePaths.swift */,
@@ -446,6 +454,7 @@
 				D7893B6147527801B9ADA1AE /* CodexRolloutAdapterTests.swift */,
 				185B6377000484DBA5B36895 /* CodexSQLiteTaskAdapterTests.swift */,
 				C81C8666F01922F392C2EB27 /* LiveTaskMonitorSmokeTests.swift */,
+				91C4DCD69999FBD941A5B22F /* MembershipTests.swift */,
 				D8E0A2D2905118F369A5D9D4 /* PluginEventJournalReaderTests.swift */,
 				9921A88DF71E4E26FC055D32 /* PulseHubRepositoryTests.swift */,
 				911BE851C765C44F33BFDA7F /* ReceiptStoreTests.swift */,
@@ -592,6 +601,7 @@
 				D4C60BA6B1BF772315F3FD18 /* LegacyCompatibilityTests.swift in Sources */,
 				B2A7E5FE5F52B7AF5A6BCCBE /* LiveTaskMonitorSmokeTests.swift in Sources */,
 				ED93206AE643A3C098469504 /* LocalizationRuntimeTests.swift in Sources */,
+				A28C4333CA310936B577887F /* MembershipTests.swift in Sources */,
 				F35D711EE4D33372B7CB0FC2 /* ModelSelectionStoreTests.swift in Sources */,
 				00F7A50592CF4D90AC00AEA2 /* NotificationServiceTests.swift in Sources */,
 				E979F0A26982D3F01A80D1EB /* PluginEventJournalReaderTests.swift in Sources */,
@@ -623,6 +633,7 @@
 				FE6227973EEAAB1002E8938B /* AppBundleNameMigrator.swift in Sources */,
 				604A38715429DC79AA51912E /* AppCoordinator.swift in Sources */,
 				8CF35E3CE99BF0BA4FD3C7A7 /* AppServerCapability.swift in Sources */,
+				0CFA71FAC18D57B9D659CC15 /* ClaudeAccountReader.swift in Sources */,
 				06A413C5594E2F780E38208B /* ClaudeAgentActivityObserver.swift in Sources */,
 				85B978114BB8AA54D9913F98 /* ClaudeDataRecords.swift in Sources */,
 				725B057FE21CF9ACAFB58F5D /* ClaudeDeepLink.swift in Sources */,
@@ -648,6 +659,7 @@
 				FF0EB36BDD7D8CB21CB17F5F /* LLMPulseApp.swift in Sources */,
 				EF0A17189BFAD23387885E18 /* LaunchAtLoginService.swift in Sources */,
 				4579A809FD2695A17A3DF82B /* LegacyCompatibility.swift in Sources */,
+				2DBD9E728AA5B0892764E376 /* Membership.swift in Sources */,
 				DCF54575EC8B16BC5C4FFD19 /* ModelIdentity.swift in Sources */,
 				8929D19AFBA4A671501BB602 /* ModelSelectionStore.swift in Sources */,
 				AB74609E3C580647D1624D07 /* ModelTaskRepository.swift in Sources */,

@@ -101,6 +101,20 @@ struct SettingsView: View {
                 }
             }
 
+            Section("会员") {
+                membershipOverrideControls(
+                    title: "Codex",
+                    profileID: .codex
+                )
+                membershipOverrideControls(
+                    title: "Claude Code",
+                    profileID: ModelIdentity.claudeCode.profileID
+                )
+                Text("填写后覆盖自动推导的续费日；留空则按订阅起始日按月推算。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("系统") {
                 Toggle("登录时启动 LLM Pulse", isOn: launchAtLoginBinding)
 
@@ -154,6 +168,43 @@ struct SettingsView: View {
                 Task { await launchAtLogin.setEnabled(enabled) }
             }
         )
+    }
+
+    @ViewBuilder
+    private func membershipOverrideControls(
+        title: String,
+        profileID: ModelProfileID
+    ) -> some View {
+        Toggle(
+            PulseL10n.text("手动指定 %@ 到期日", language: settings.appLanguage, title),
+            isOn: Binding(
+                get: { settings.membershipExpiryOverride(for: profileID) != nil },
+                set: { enabled in
+                    settings.setMembershipExpiryOverride(
+                        enabled ? Self.defaultExpiryDate() : nil,
+                        for: profileID
+                    )
+                }
+            )
+        )
+        if settings.membershipExpiryOverride(for: profileID) != nil {
+            DatePicker(
+                PulseL10n.text("到期日", language: settings.appLanguage),
+                selection: Binding(
+                    get: {
+                        settings.membershipExpiryOverride(for: profileID) ?? .now
+                    },
+                    set: { settings.setMembershipExpiryOverride($0, for: profileID) }
+                ),
+                displayedComponents: .date
+            )
+        }
+    }
+
+    /// A month out: the most common cycle, and visibly a placeholder rather
+    /// than a claim about the real date.
+    private static func defaultExpiryDate() -> Date {
+        Calendar.current.date(byAdding: .month, value: 1, to: .now) ?? .now
     }
 
     private func refreshNotificationAuthorizationStatus() async {

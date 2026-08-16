@@ -10,6 +10,7 @@ actor ClaudeTaskRepository {
     private let transcriptAdapter: ClaudeTranscriptAdapter
     private let agentObserver: ClaudeAgentActivityObserver
     private let planUsageReader: ClaudePlanUsageReader
+    private let accountReader: ClaudeAccountReader
     private let paths: ClaudePaths
     private let runningStaleInterval: TimeInterval
     private let terminalRetentionInterval: TimeInterval
@@ -29,6 +30,11 @@ actor ClaudeTaskRepository {
     /// file's stamp, not repeated; projections onto `now` stay per-poll.
     private var planUsageStamp: ClaudeFileStamp?
     private var planUsageParsed: ClaudePlanUsageReader.Parsed?
+
+    /// Same stamp-keyed pattern for the account config, which grows with
+    /// per-project state and must not be re-parsed on a 750 ms cadence.
+    private var accountStamp: ClaudeFileStamp?
+    private var accountObservation: MembershipObservation?
 
     init(
         paths: ClaudePaths,
@@ -51,6 +57,7 @@ actor ClaudeTaskRepository {
         planUsageReader = ClaudePlanUsageReader(
             planUsageHistoryURL: paths.planUsageHistoryURL
         )
+        accountReader = ClaudeAccountReader(accountConfigURL: paths.accountConfigURL)
         self.paths = paths
         self.runningStaleInterval = runningStaleInterval
         self.terminalRetentionInterval = terminalRetentionInterval
@@ -147,9 +154,19 @@ actor ClaudeTaskRepository {
             // travel on `usage` instead, where nothing implies Codex's window
             // semantics.
             rateLimits: nil,
+            membership: currentMembership(),
             health: health,
             refreshedAt: now
         )
+    }
+
+    private func currentMembership() -> MembershipObservation? {
+        let stamp = ClaudeFileStamp(path: paths.accountConfigURL.path)
+        if stamp != accountStamp {
+            accountStamp = stamp
+            accountObservation = accountReader.read()
+        }
+        return accountObservation
     }
 
     /// Model-level usage: what this app observed locally, plus the vendor's

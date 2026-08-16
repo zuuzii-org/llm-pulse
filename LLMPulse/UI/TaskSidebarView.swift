@@ -393,13 +393,24 @@ struct TaskSidebarView: View {
     @ViewBuilder
     private var modelTelemetry: some View {
         if let selectedModel, selectedModel.identity.profileID != .codex {
-            ModelUsageCard(identity: selectedModel.identity, usage: selectedModel.usage)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 7)
+            ModelUsageCard(
+                identity: selectedModel.identity,
+                usage: selectedModel.usage,
+                membership: selectedModel.membership,
+                manualExpiry: settings.membershipExpiryOverride(
+                    for: selectedModel.identity.profileID
+                )
+            )
+            .padding(.horizontal, 16)
+            .padding(.vertical, 7)
         } else {
-            RateLimitCard(rateLimits: snapshot.rateLimits)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 7)
+            RateLimitCard(
+                rateLimits: snapshot.rateLimits,
+                membership: selectedModel?.membership,
+                manualExpiry: settings.membershipExpiryOverride(for: .codex)
+            )
+            .padding(.horizontal, 16)
+            .padding(.vertical, 7)
         }
     }
 
@@ -1150,6 +1161,16 @@ private struct ModelUsageCard: View {
 
     let identity: ModelIdentity
     let usage: ModelUsageSnapshot?
+    let membership: MembershipObservation?
+    let manualExpiry: Date?
+
+    private var membershipDisplay: MembershipDisplay? {
+        MembershipDisplay.resolve(
+            observation: membership,
+            manualExpiry: manualExpiry,
+            now: .now
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -1190,6 +1211,21 @@ private struct ModelUsageCard: View {
             if let usage, usage.hasPlanUsage {
                 Divider().opacity(0.32)
                 planUsage(usage)
+            } else if membershipDisplay != nil {
+                Divider().opacity(0.32)
+            }
+            if let membershipDisplay {
+                MembershipRowView(display: membershipDisplay, now: .now)
+            }
+            if let usage, usage.hasPlanUsage {
+                Text(
+                    usage.hasEstimatedResets
+                        ? PulseL10n.text("账户级用量 · 重置时间为估算", language: language)
+                        : PulseL10n.text("账户级用量 · 无重置时间", language: language)
+                )
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(12)
@@ -1219,14 +1255,6 @@ private struct ModelUsageCard: View {
                     window: window
                 )
             }
-            Text(
-                usage.hasEstimatedResets
-                    ? PulseL10n.text("账户级用量 · 重置时间为估算", language: language)
-                    : PulseL10n.text("账户级用量 · 无重置时间", language: language)
-            )
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
-            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -1312,6 +1340,81 @@ private struct ModelUsageCard: View {
     }()
 }
 
+/// One line of membership state, shared by both model cards.
+///
+/// The date's provenance decides its wording: a derived renewal keeps its
+/// "约", while a manual entry and a vendor-recorded trial end are exact and
+/// drop it. Urgency is color, not extra copy — orange within a week, red once
+/// past.
+private struct MembershipRowView: View {
+    @Environment(\.pulseLanguage) private var language
+
+    let display: MembershipDisplay
+    let now: Date
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(PulseL10n.text("会员", language: language))
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+            if let tier = display.tierDisplayName {
+                Text(tier)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            if let dateText {
+                Text(dateText)
+                    .font(.caption2.monospacedDigit().weight(.medium))
+                    .foregroundStyle(dateColor)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
+    }
+
+    private var dateText: String? {
+        guard let date = display.date, let kind = display.kind else { return nil }
+        if date <= now, kind != .derivedRenewal {
+            return PulseL10n.text("已到期", language: language)
+        }
+        let formatted = Self.format(date, language: language)
+        switch kind {
+        case .manualExpiry:
+            return PulseL10n.text("%@ 到期", language: language, formatted)
+        case .trialEnd:
+            return PulseL10n.text("试用至 %@", language: language, formatted)
+        case .derivedRenewal:
+            return PulseL10n.text("约 %@ 续费", language: language, formatted)
+        }
+    }
+
+    private var dateColor: Color {
+        guard let date = display.date else { return .secondary }
+        if date <= now { return .red }
+        if date.timeIntervalSince(now) <= 7 * 24 * 60 * 60 {
+            return TaskSidebarPalette.selectedModelInk
+        }
+        return .secondary
+    }
+
+    private var accessibilityText: String {
+        var parts = [PulseL10n.text("会员", language: language)]
+        if let tier = display.tierDisplayName { parts.append(tier) }
+        if let dateText { parts.append(dateText) }
+        return parts.dropFirst().reduce(parts[0]) { joined, part in
+            PulseL10n.text("%@，%@", language: language, joined, part)
+        }
+    }
+
+    private static func format(_ date: Date, language: AppLanguage) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = language.locale
+        formatter.setLocalizedDateFormatFromTemplate("MMMd")
+        return formatter.string(from: date)
+    }
+}
+
 enum RateLimitCardPresentation {
     static func displayedWindowMinutes(_ rateLimits: RateLimitSnapshot?) -> [Int] {
         rateLimits?.weekly.map { [$0.windowMinutes] } ?? []
@@ -1329,6 +1432,8 @@ private struct RateLimitCard: View {
     @Environment(\.pulseLanguage) private var language
 
     let rateLimits: RateLimitSnapshot?
+    let membership: MembershipObservation?
+    let manualExpiry: Date?
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
@@ -1341,6 +1446,16 @@ private struct RateLimitCard: View {
                 )
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
+
+                if let display = MembershipDisplay.resolve(
+                    observation: membership,
+                    manualExpiry: manualExpiry,
+                    now: context.date
+                ) {
+                    MembershipRowView(display: display, now: context.date)
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 7)
+                }
 
                 Divider().opacity(0.38)
 

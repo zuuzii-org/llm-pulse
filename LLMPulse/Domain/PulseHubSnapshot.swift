@@ -5,6 +5,7 @@ struct ModelTaskSnapshot: Equatable, Sendable {
     let tasks: [PulseTask]
     let usage: ModelUsageSnapshot?
     let rateLimits: RateLimitSnapshot?
+    let membership: MembershipObservation?
     let health: [AdapterHealth]
     let refreshedAt: Date
 
@@ -13,6 +14,7 @@ struct ModelTaskSnapshot: Equatable, Sendable {
         tasks: [PulseTask],
         usage: ModelUsageSnapshot? = nil,
         rateLimits: RateLimitSnapshot? = nil,
+        membership: MembershipObservation? = nil,
         health: [AdapterHealth],
         refreshedAt: Date
     ) {
@@ -21,6 +23,7 @@ struct ModelTaskSnapshot: Equatable, Sendable {
         self.tasks = matchingTasks
         self.usage = usage
         self.rateLimits = rateLimits
+        self.membership = membership
         if matchingTasks.count == tasks.count {
             self.health = health
         } else {
@@ -36,10 +39,14 @@ struct ModelTaskSnapshot: Equatable, Sendable {
     }
 
     init(codex snapshot: TaskSnapshot) {
+        let tier = MembershipObservation.tierDisplayName(
+            fromCodexPlanType: snapshot.rateLimits?.planType
+        )
         self.init(
             identity: .codex,
             tasks: snapshot.tasks,
             rateLimits: snapshot.rateLimits,
+            membership: tier.map { MembershipObservation(tierDisplayName: $0) },
             health: snapshot.health,
             refreshedAt: snapshot.refreshedAt
         )
@@ -66,6 +73,7 @@ struct ModelTaskSnapshot: Equatable, Sendable {
             },
             usage: usage,
             rateLimits: rateLimits,
+            membership: membership,
             health: replacingReceiptHealth(
                 in: health,
                 with: .healthy(.receipts, at: refreshedAt)
@@ -80,6 +88,7 @@ struct ModelTaskSnapshot: Equatable, Sendable {
             tasks: tasks,
             usage: usage,
             rateLimits: rateLimits,
+            membership: membership,
             health: replacingReceiptHealth(in: health, with: receiptHealth),
             refreshedAt: refreshedAt
         )
@@ -109,6 +118,7 @@ struct ModelTaskSnapshot: Equatable, Sendable {
             },
             usage: usage,
             rateLimits: rateLimits,
+            membership: membership,
             health: health,
             refreshedAt: refreshedAt
         )

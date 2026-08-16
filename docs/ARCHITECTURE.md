@@ -104,6 +104,14 @@ Claude 模型页的用量卡片分两部分，二者的保证强度不同，因�
 
 `plan-usage-history.json` 位于 Application Support 而非 `~/.claude`，因此 `CLAUDE_CONFIG_DIR` 不能重定向它，另有 `CLAUDE_APP_SUPPORT_DIR` 作为注入点。
 
+### 会员行
+
+两个模型页在重置行下方各有一行会员状态，数据来源与保证强度逐项标明：
+
+- **套餐名（强）**：Claude 读 `~/.claude.json` 的 `oauthAccount.organizationRateLimitTier`（`ClaudeAccountReader` 只取该对象的三个字段，绝不触碰 `mcpServers` 等可能含密钥的部分）；Codex 用遥测里已有的 `planType`。
+- **到期/续费日（分层）**：设置里手动填写的日期最优先、精确显示；其次是 `claudeCodeTrialEndsAt` 记录的试用截止（官方值，精确）；最后按 `subscriptionCreatedAt` 以整月为周期推导下一次续费——这是「Apple 订阅按购买日按月续费」的假设，年付或已取消续订时会错，因此始终标「约」，且推导永远从原始锚点出发以免被短月拖偏。三者都没有时只显示套餐名。
+- `.claude.json` 与用量历史同样按文件 stamp 缓存解析，750ms 轮询不重复读。
+
 ## 状态归并
 
 | 输入证据 | LLM Pulse 状态 |

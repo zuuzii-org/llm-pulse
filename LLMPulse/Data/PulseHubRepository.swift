@@ -391,6 +391,7 @@ actor TimedModelSource {
                         tasks: model.tasks,
                         usage: model.usage,
                         rateLimits: model.rateLimits,
+                        membership: model.membership,
                         health: replacingRuntimeSourceHealth(
                             in: model.health,
                             with: .degraded(

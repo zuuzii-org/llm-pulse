@@ -41,12 +41,39 @@ enum PulsePreferenceKey {
     static let mutedProjectExpirations = "mutedProjectExpirations"
     static let runningSectionExpanded = "runningSectionExpanded"
     static let recentSectionExpanded = "recentSectionExpanded"
+    static let membershipExpiryOverrides = "membershipExpiryOverrides"
 }
 
 @MainActor
 final class PulseSettings: ObservableObject {
     @Published var appLanguage: AppLanguage {
         didSet { defaults.set(appLanguage.rawValue, forKey: PulsePreferenceKey.appLanguage) }
+    }
+
+    /// User-entered membership expiry dates, keyed by model profile.
+    ///
+    /// This is the correction channel for the derived renewal date: whatever
+    /// is entered here is shown exactly, with no "约". Stored as epoch
+    /// seconds because `UserDefaults` round-trips those losslessly.
+    @Published private(set) var membershipExpiryOverrides: [String: Date] {
+        didSet {
+            defaults.set(
+                membershipExpiryOverrides.mapValues(\.timeIntervalSince1970),
+                forKey: PulsePreferenceKey.membershipExpiryOverrides
+            )
+        }
+    }
+
+    func membershipExpiryOverride(for profileID: ModelProfileID) -> Date? {
+        membershipExpiryOverrides[profileID.rawValue]
+    }
+
+    func setMembershipExpiryOverride(_ date: Date?, for profileID: ModelProfileID) {
+        if let date {
+            membershipExpiryOverrides[profileID.rawValue] = date
+        } else {
+            membershipExpiryOverrides.removeValue(forKey: profileID.rawValue)
+        }
     }
 
     @Published var edgeTriggerEnabled: Bool {
@@ -146,6 +173,12 @@ final class PulseSettings: ObservableObject {
             forKey: PulsePreferenceKey.recentSectionExpanded,
             default: true
         )
+        membershipExpiryOverrides = defaults.dictionary(
+            forKey: PulsePreferenceKey.membershipExpiryOverrides
+        )?.reduce(into: [String: Date]()) { result, item in
+            guard let timestamp = item.value as? Double else { return }
+            result[item.key] = Date(timeIntervalSince1970: timestamp)
+        } ?? [:]
 
         let now = Date.now
         mutedProjectExpirations = defaults.dictionary(

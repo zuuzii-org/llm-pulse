@@ -20,6 +20,11 @@ struct ClaudePaths: Sendable {
     /// alone does not redirect it and it carries its own override.
     let planUsageHistoryURL: URL
 
+    /// The CLI's account config (`.claude.json`). A sibling of `~/.claude` in
+    /// the default layout, but inside `CLAUDE_CONFIG_DIR` when that is set —
+    /// which is also where tests plant their fixture.
+    let accountConfigURL: URL
+
     static func live(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
@@ -41,18 +46,32 @@ struct ClaudePaths: Sendable {
                 .appendingPathComponent("Claude", isDirectory: true)
         }
 
+        // With no override the config file is a *sibling* of ~/.claude, not
+        // inside it; with CLAUDE_CONFIG_DIR set the CLI moves it into that
+        // directory, which the member initializer's default already covers.
+        let accountConfig = environment["CLAUDE_CONFIG_DIR"].flatMap { $0.isEmpty ? nil : $0 }
+            .map { _ in claudeHome.appendingPathComponent(".claude.json") }
+            ?? homeDirectory.appendingPathComponent(".claude.json")
+
         return ClaudePaths(
             claudeHome: claudeHome,
-            applicationSupportDirectory: applicationSupport
+            applicationSupportDirectory: applicationSupport,
+            accountConfigURL: accountConfig
         )
     }
 
-    init(claudeHome: URL, applicationSupportDirectory: URL? = nil) {
+    init(
+        claudeHome: URL,
+        applicationSupportDirectory: URL? = nil,
+        accountConfigURL: URL? = nil
+    ) {
         self.claudeHome = claudeHome
         sessionsDirectory = claudeHome.appendingPathComponent("sessions", isDirectory: true)
         projectsDirectory = claudeHome.appendingPathComponent("projects", isDirectory: true)
         planUsageHistoryURL = (applicationSupportDirectory ?? claudeHome)
             .appendingPathComponent("plan-usage-history.json")
+        self.accountConfigURL = accountConfigURL
+            ?? claudeHome.appendingPathComponent(".claude.json")
     }
 
     /// The sidecar directory beside a transcript, holding `subagents/` and

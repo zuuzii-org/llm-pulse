@@ -81,6 +81,14 @@ final class ClaudeLiveSmokeTests: XCTestCase {
         [claude-smoke] resets \
         5h=\(snapshot.usage?.fiveHourWindow?.estimatedResetsAt?.description ?? "nil") \
         7d=\(snapshot.usage?.sevenDayWindow?.estimatedResetsAt?.description ?? "nil")
+        [claude-smoke] membership tier=\(snapshot.membership?.tierDisplayName ?? "nil") \
+        anchor=\(snapshot.membership?.subscriptionAnchor?.description ?? "nil") \
+        trial=\(snapshot.membership?.trialEndsAt?.description ?? "nil") \
+        derivedRenewal=\(MembershipDisplay.resolve(
+            observation: snapshot.membership,
+            manualExpiry: nil,
+            now: .now
+        )?.date?.description ?? "nil")
         """)
     }
 }
