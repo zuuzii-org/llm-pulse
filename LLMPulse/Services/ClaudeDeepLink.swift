@@ -15,30 +15,14 @@ enum ClaudeDeepLink {
             + "-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$"
     )
 
-    /// A `claude://resume` URL, or `nil` when the identifier is not a UUID.
-    ///
-    /// Validation happens here because the receiving handler returns `false`
-    /// for a malformed identifier *and skips its own show-and-focus branch* —
-    /// the click would do nothing at all, with no error anywhere. Falling back
-    /// to plain activation is strictly better than that silence.
-    static func resumeURL(sessionID: String) -> URL? {
-        guard isValidSessionIdentifier(sessionID) else { return nil }
-        var components = URLComponents()
-        components.scheme = "claude"
-        components.host = "resume"
-        components.queryItems = [URLQueryItem(name: "session", value: sessionID)]
-        return components.url
-    }
-
-    /// Whether a row may be opened by deep link rather than by activation.
-    ///
-    /// Only sessions the desktop app itself started. For any other entrypoint
-    /// the first resume rewrites the transcript in place to strip thinking
-    /// blocks, and a read-only monitor must not cause a destructive write
-    /// because someone clicked a row.
-    static func isResumable(entrypoint: String?) -> Bool {
-        entrypoint == desktopEntrypoint
-    }
+    // No resume URL is offered on purpose. `claude://resume?session=` exists,
+    // but its verified semantics are *import*: the desktop copies the CLI
+    // transcript into a fresh session of its own, and its duplicate check
+    // only matches sessions it imported (prefix + CLI id), never the ones it
+    // started natively. Aimed at a live desktop session it mints a duplicate
+    // per click. The desktop's own session id is not persisted anywhere
+    // readable, so there is nothing correct to link to — activation is the
+    // whole contract.
 
     static func isValidSessionIdentifier(_ sessionID: String) -> Bool {
         guard let sessionIdentifierPattern else { return false }

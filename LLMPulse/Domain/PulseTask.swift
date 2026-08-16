@@ -33,7 +33,6 @@ struct PulseTask: Identifiable, Codable, Equatable, Sendable {
     /// session that was started outside the desktop app rewrites its
     /// transcript in place, and a read-only monitor must not cause a
     /// destructive write because someone clicked a row.
-    let supportsDeepLink: Bool
 
     var profileID: ModelProfileID { identity.profileID }
     var runtime: AIRuntimeID { identity.runtime }
@@ -56,7 +55,6 @@ struct PulseTask: Identifiable, Codable, Equatable, Sendable {
         tokenUsage: TokenUsageSnapshot? = nil,
         agentActivity: AgentActivityObservation? = nil,
         isProvisionalFailure: Bool = false,
-        supportsDeepLink: Bool = true
     ) {
         self.threadId = threadId
         self.turnId = turnId
@@ -80,7 +78,6 @@ struct PulseTask: Identifiable, Codable, Equatable, Sendable {
         self.tokenUsage = tokenUsage
         self.agentActivity = agentActivity
         self.isProvisionalFailure = state == .failed && isProvisionalFailure
-        self.supportsDeepLink = supportsDeepLink
     }
 
     var workingDirectory: String { projectDirectory }
@@ -107,7 +104,6 @@ struct PulseTask: Identifiable, Codable, Equatable, Sendable {
             tokenUsage: tokenUsage,
             agentActivity: agentActivity,
             isProvisionalFailure: isProvisionalFailure,
-            supportsDeepLink: supportsDeepLink
         )
     }
 

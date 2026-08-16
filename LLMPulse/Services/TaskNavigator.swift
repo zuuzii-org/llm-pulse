@@ -44,16 +44,16 @@ final class TaskNavigator {
             return open(threadID: task.threadId)
 
         case .claudeDesktop:
-            // A malformed identifier makes the receiving handler bail out
-            // before it shows anything, so the click would silently do
-            // nothing. Bringing the app forward is a worse outcome than a
-            // direct jump, but it is never a no-op.
-            if task.supportsDeepLink,
-               let url = ClaudeDeepLink.resumeURL(sessionID: task.sessionID),
-               openHandler(url)
-            {
-                return true
-            }
+            // Deliberately no deep link. `claude://resume` does not focus a
+            // session — it *imports* the CLI transcript as a new desktop
+            // session, and its duplicate check only recognizes sessions it
+            // imported itself (their id is a prefix plus the CLI id, while a
+            // desktop-started session keeps its own). Every click on a live
+            // desktop session therefore minted another "General coding
+            // session". The desktop's own session id never touches disk, so
+            // the exact row cannot be addressed from outside; bringing the
+            // app forward — where the session already sits in the sidebar —
+            // is everything that can be done correctly.
             return activateHandler(ClaudeDeepLink.desktopBundleIdentifier)
 
         default:

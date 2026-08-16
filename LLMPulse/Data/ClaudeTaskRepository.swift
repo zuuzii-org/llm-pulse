@@ -256,8 +256,7 @@ actor ClaudeTaskRepository {
                 completedAt: status.completedAt,
                 lastStatus: status.lastStatus,
                 tokenUsage: record.tokenUsage,
-                agentActivity: agentActivity,
-                supportsDeepLink: entry?.isDesktopEntrypoint ?? false
+                agentActivity: agentActivity
             ))
         }
 

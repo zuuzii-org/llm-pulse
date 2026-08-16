@@ -25,7 +25,6 @@ final class ClaudeTaskRepositoryTests: XCTestCase {
         XCTAssertEqual(task.sessionID, sessionID)
         XCTAssertEqual(task.projectDirectory, "/tmp/llm-pulse")
         XCTAssertEqual(task.title, "session-name")
-        XCTAssertTrue(task.supportsDeepLink)
     }
 
     func testASessionWhoseProcessDiedIsClampedToCompleted() async throws {
@@ -54,10 +53,6 @@ final class ClaudeTaskRepositoryTests: XCTestCase {
             task.state,
             .completed,
             "A transcript stuck mid-tool would otherwise claim to run forever."
-        )
-        XCTAssertFalse(
-            task.supportsDeepLink,
-            "Nothing is known about how a history row was started."
         )
     }
 
