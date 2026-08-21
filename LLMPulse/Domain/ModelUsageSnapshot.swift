@@ -81,4 +81,14 @@ struct ModelUsageSnapshot: Equatable, Codable, Sendable {
         fiveHourWindow?.estimatedResetsAt != nil
             || sevenDayWindow?.estimatedResetsAt != nil
     }
+
+    /// Whether the account-level percentages must be shown with the time they
+    /// were taken rather than as a current reading.
+    ///
+    /// Asked rather than stored: the snapshot itself ages between polls, so a
+    /// flag captured at read time would go quietly wrong.
+    func planUsageIsStale(asOf now: Date) -> Bool {
+        guard let planUsageObservedAt else { return false }
+        return now.timeIntervalSince(planUsageObservedAt) > ClaudePlanUsageReader.liveInterval
+    }
 }

@@ -1014,14 +1014,10 @@ private struct ModelUsageCard: View {
                 MembershipRowView(display: membershipDisplay, now: .now)
             }
             if let usage, usage.hasPlanUsage {
-                Text(
-                    usage.hasEstimatedResets
-                        ? PulseL10n.text("账户级用量 · 重置时间为估算", language: language)
-                        : PulseL10n.text("账户级用量 · 无重置时间", language: language)
-                )
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
+                Text(planUsageFootnote(usage))
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(12)
@@ -1092,6 +1088,28 @@ private struct ModelUsageCard: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(planUsageAccessibilityText(title: title, window: window))
+    }
+
+    /// The caveat that matters most, which is not always the same one.
+    ///
+    /// Only the desktop app writes these percentages, and only while it is
+    /// open, so on a CLI-first machine they routinely sit hours behind. When
+    /// that happens the age is the dominant caveat and displaces the usual
+    /// note about estimated resets: a weekly figure from this morning is
+    /// still a useful lower bound, but only if the reader can see that is
+    /// what it is.
+    private func planUsageFootnote(_ usage: ModelUsageSnapshot) -> String {
+        let now = Date.now
+        if usage.planUsageIsStale(asOf: now), let observedAt = usage.planUsageObservedAt {
+            return PulseL10n.text(
+                "账户级用量 · 数据截至 %@",
+                language: language,
+                PulseDisplayClock.concrete(observedAt, language: language)
+            )
+        }
+        return usage.hasEstimatedResets
+            ? PulseL10n.text("账户级用量 · 重置时间为估算", language: language)
+            : PulseL10n.text("账户级用量 · 无重置时间", language: language)
     }
 
     /// "约 8月23日 20:59 重置" — a full date and clock time on the product's

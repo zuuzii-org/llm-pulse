@@ -32,12 +32,24 @@ struct ClaudePlanUsageReader: Sendable {
     /// The widest gap between two samples that still brackets an event.
     ///
     /// A collapse across a wider gap only proves the reset happened *sometime*
-    /// while the app was closed, which is not a time worth displaying. The
-    /// nominal cadence is five minutes, but gaps close to seventeen were
-    /// observed on a busy machine with the app open the whole time, so the
-    /// cap sits above those; midpoint error stays within ±10 minutes, which
-    /// the "estimated" label honestly covers.
-    private static let maximumBracket: TimeInterval = 20 * 60
+    /// while the app was closed, which is not a time worth displaying.
+    ///
+    /// The vendor's cadence changed in mid-August 2026: five minutes became
+    /// fifteen, measured across 3,779 samples on a live machine. That turned
+    /// the old twenty-minute cap from four times the cadence into 1.33 times
+    /// it, so a single dropped sample would silently stop bracketing anything.
+    /// Thirty-two minutes restores the tolerance for one dropped sample and is
+    /// about as wide as this may go: the midpoint's error is half the bracket,
+    /// so this already means ±16 minutes, which is the most the "estimated"
+    /// label can honestly carry.
+    private static let maximumBracket: TimeInterval = 32 * 60
+
+    /// How recent a sample must be to be read as the state right now.
+    ///
+    /// Two sampling intervals at the current fifteen-minute cadence. Past
+    /// this, a value is still worth showing but must carry the time it was
+    /// taken rather than pass as a live reading.
+    static let liveInterval: TimeInterval = 30 * 60
 
     /// A sample written moments ago can carry a timestamp slightly ahead of
     /// this clock; that is not a reason to discard it.
@@ -45,18 +57,28 @@ struct ClaudePlanUsageReader: Sendable {
 
     private let planUsageHistoryURL: URL
 
-    /// How stale a sample may be and still be shown.
+    /// The outer bound on a sample's age, past which nothing is shown.
     ///
-    /// Past this the number says more about when the app was last open than
-    /// about the account, and a stale percentage reads as a current one.
-    private let freshnessInterval: TimeInterval
+    /// Only the desktop app writes this file, and only while it is open, so
+    /// the age of the newest sample is really the age of that app's last
+    /// session. Six hours used to be the cutoff, and it hid the whole card for
+    /// between half an hour and five hours on an ordinary day — the complaint
+    /// that produced this comment. Measured against 3,779 samples, twelve
+    /// hours is where the coverage curve flattens: it recovers every hidden
+    /// minute on days the app ran at all, and going further recovers nothing,
+    /// because the remaining gaps are whole days with the app closed.
+    ///
+    /// Staying inside this bound is necessary but not sufficient. Whether a
+    /// percentage still describes the window it was measured in is decided
+    /// per window in `reading(from:now:)`.
+    private let maximumUsableAge: TimeInterval
 
     init(
         planUsageHistoryURL: URL,
-        freshnessInterval: TimeInterval = 6 * 60 * 60
+        maximumUsableAge: TimeInterval = 12 * 60 * 60
     ) {
         self.planUsageHistoryURL = planUsageHistoryURL
-        self.freshnessInterval = freshnessInterval
+        self.maximumUsableAge = maximumUsableAge
     }
 
     /// Facts extracted from one full pass over the file, all independent of
@@ -171,13 +193,30 @@ struct ClaudePlanUsageReader: Sendable {
     /// Separate from `parse()` because the facts age differently: percentages
     /// go stale with the file, while a five-hour estimate can expire between
     /// two polls of an unchanged file.
+    /// A window's percentage is shown only when no reset of that window can
+    /// have happened between the sample and now. Hiding everything the moment
+    /// a sample ages is the wrong trade — it makes "the app was closed"
+    /// indistinguishable from "you have no account" — but showing a number
+    /// across a reset is worse than showing nothing, because it is simply
+    /// false. So each window answers that question with what is actually
+    /// known about it, and the caller labels what survives with `observedAt`.
     func reading(from parsed: Parsed, now: Date) -> Reading? {
         let age = now.timeIntervalSince(parsed.observedAt)
-        guard age >= -Self.clockSkewTolerance, age <= freshnessInterval else { return nil }
+        guard age >= -Self.clockSkewTolerance, age <= maximumUsableAge else { return nil }
+        let sampleIsLive = age <= Self.liveInterval
 
+        // Five-hour window.
+        //
+        // These roll several times a day, so a stale percentage here is not
+        // merely imprecise — it can describe a window that no longer exists.
+        // This machine recorded exactly that: 21% before a ten-hour blind
+        // spot, 7% after. The number therefore needs positive evidence that
+        // it still applies, which is either a sample taken moments ago or a
+        // known window that has not expired and contains the sample.
         var fiveHourResetsAt: Date?
         if let openedAt = parsed.fiveHourWindowOpenedAt,
-           (parsed.fiveHourPercent ?? 0) > 0 {
+           (parsed.fiveHourPercent ?? 0) > 0,
+           openedAt <= parsed.observedAt {
             let resetsAt = openedAt.addingTimeInterval(
                 TimeInterval(Self.fiveHourMinutes * 60)
             )
@@ -188,30 +227,50 @@ struct ClaudePlanUsageReader: Sendable {
                 fiveHourResetsAt = resetsAt
             }
         }
+        let fiveHourStillApplies = sampleIsLive || fiveHourResetsAt != nil
 
+        // Seven-day window.
+        //
+        // The weekly reset is a fixed anchor, so whether a sample predates one
+        // is knowable rather than guessed: a sample from before the most
+        // recent reset describes last week's budget and is withheld. Inside
+        // the same week the percentage only grows, so an older sample is a
+        // valid lower bound.
+        //
+        // Without an anchor the sample is kept, bounded by `maximumUsableAge`.
+        // An unnoticed weekly reset would make the figure an over-estimate,
+        // and over-stating how much of a limit is spent is the safe direction
+        // to be wrong in — unlike the five-hour case, where resets are frequent
+        // enough that being wrong is the expected outcome rather than the tail.
         var sevenDayResetsAt: Date?
+        var sevenDayStillApplies = true
         if var anchor = parsed.sevenDayResetAnchor {
             let week: TimeInterval = 7 * 24 * 60 * 60
             while anchor <= now {
                 anchor += week
             }
             sevenDayResetsAt = anchor
+            sevenDayStillApplies = anchor.addingTimeInterval(-week) <= parsed.observedAt
         }
 
-        let fiveHour = parsed.fiveHourPercent.flatMap {
-            PlanUsageWindow(
-                usedPercent: $0,
-                windowMinutes: Self.fiveHourMinutes,
-                estimatedResetsAt: fiveHourResetsAt
-            )
-        }
-        let sevenDay = parsed.sevenDayPercent.flatMap {
-            PlanUsageWindow(
-                usedPercent: $0,
-                windowMinutes: Self.sevenDayMinutes,
-                estimatedResetsAt: sevenDayResetsAt
-            )
-        }
+        let fiveHour = fiveHourStillApplies
+            ? parsed.fiveHourPercent.flatMap {
+                PlanUsageWindow(
+                    usedPercent: $0,
+                    windowMinutes: Self.fiveHourMinutes,
+                    estimatedResetsAt: fiveHourResetsAt
+                )
+            }
+            : nil
+        let sevenDay = sevenDayStillApplies
+            ? parsed.sevenDayPercent.flatMap {
+                PlanUsageWindow(
+                    usedPercent: $0,
+                    windowMinutes: Self.sevenDayMinutes,
+                    estimatedResetsAt: sevenDayResetsAt
+                )
+            }
+            : nil
         guard fiveHour != nil || sevenDay != nil else { return nil }
 
         return Reading(

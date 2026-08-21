@@ -162,6 +162,7 @@
 "%@已用 %d%%" = "%@, %d%% used";
 "账户级用量 · 无重置时间" = "Account-wide usage · no reset time available";
 "账户级用量 · 重置时间为估算" = "Account-wide usage · reset times are estimated";
+"账户级用量 · 数据截至 %@" = "Account-wide usage · as of %@";
 "约 %@ 重置" = "Resets around %@";
 "%@，%@" = "%@, %@";
 "会员" = "Membership";

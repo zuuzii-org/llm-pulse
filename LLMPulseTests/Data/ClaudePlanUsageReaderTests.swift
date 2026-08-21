@@ -51,7 +51,165 @@ final class ClaudePlanUsageReaderTests: XCTestCase {
         XCTAssertEqual(reading.fiveHourWindow?.usedPercent, 24)
     }
 
-    func testASampleOlderThanTheFreshnessWindowIsWithheld() throws {
+    // MARK: - Staleness
+
+    /// The regression this file's cutoff caused.
+    ///
+    /// The vendor's desktop app is the only writer and samples only while it
+    /// is open, so on a CLI-first machine the newest sample is routinely
+    /// hours old. A six-hour cutoff blanked the whole card for hours a day;
+    /// an eight-hour-old weekly percentage is still a usable lower bound and
+    /// is now kept, with the caller labelling it.
+    func testAWeeklyPercentageSurvivesASampleOlderThanSixHours() throws {
+        let observedAt = now.addingTimeInterval(-8 * 60 * 60)
+        let url = try write(samples: [(observedAt, 30, 12)])
+        defer { remove(url) }
+
+        let reading = try XCTUnwrap(ClaudePlanUsageReader(planUsageHistoryURL: url)
+            .read(now: now))
+
+        XCTAssertEqual(reading.sevenDayWindow?.usedPercent, 12)
+        XCTAssertEqual(reading.observedAt, observedAt)
+    }
+
+    /// The failure the five-hour rule exists to prevent, taken from a real
+    /// machine: 21% recorded, a ten-hour blind spot, then 7%. Showing 21%
+    /// during that gap is not stale — it is false, because the window it
+    /// measured ended hours earlier.
+    func testAFiveHourPercentageIsWithheldOnceItsWindowHasExpired() throws {
+        let observedAt = now.addingTimeInterval(-8 * 60 * 60)
+        let url = try write(samples: [(observedAt, 21, 14)])
+        defer { remove(url) }
+
+        let reading = try XCTUnwrap(ClaudePlanUsageReader(planUsageHistoryURL: url)
+            .read(now: now))
+
+        XCTAssertNil(
+            reading.fiveHourWindow,
+            "A five-hour window certainly rolled over during an eight-hour gap."
+        )
+        XCTAssertEqual(
+            reading.sevenDayWindow?.usedPercent,
+            14,
+            "The weekly budget did not roll with it."
+        )
+    }
+
+    /// Being inside a window that is provably still open is the other way to
+    /// earn the number, and it beats mere recency.
+    func testAFiveHourPercentageSurvivesWhileItsObservedWindowIsStillOpen() throws {
+        let opening = now.addingTimeInterval(-2 * 60 * 60)
+        let url = try write(samples: [
+            (opening, 0, 5),
+            (opening.addingTimeInterval(300), 10, 5),
+            (now.addingTimeInterval(-90 * 60), 35, 5),
+        ])
+        defer { remove(url) }
+
+        let reading = try XCTUnwrap(ClaudePlanUsageReader(planUsageHistoryURL: url)
+            .read(now: now))
+
+        XCTAssertEqual(
+            reading.fiveHourWindow?.usedPercent,
+            35,
+            "The sample sits inside a window that has not expired yet."
+        )
+    }
+
+    /// The weekly anchor makes "did a reset happen since this sample?" a fact
+    /// rather than a guess, so a sample from the previous week is withheld
+    /// even though it is well inside the age limit.
+    func testAWeeklyPercentageFromBeforeTheLastResetIsWithheld() throws {
+        let reset = now.addingTimeInterval(-4 * 60 * 60)
+        let url = try write(samples: [
+            (reset.addingTimeInterval(-8 * 60 * 60), 30, 88),
+            (reset.addingTimeInterval(-300), 30, 88),
+            (reset.addingTimeInterval(300), 30, 1),
+            (reset.addingTimeInterval(600), 30, 1),
+        ])
+        defer { remove(url) }
+        let reader = ClaudePlanUsageReader(planUsageHistoryURL: url)
+        let parsed = try XCTUnwrap(reader.parse())
+
+        // A week on, the same file's newest sample predates that week's reset.
+        let nextWeek = now.addingTimeInterval(7 * 24 * 60 * 60)
+        let reading = reader.reading(from: parsed, now: nextWeek)
+
+        XCTAssertNil(
+            reading?.sevenDayWindow,
+            "That percentage describes the previous week's budget."
+        )
+    }
+
+    func testSamplesPastTheOuterBoundAreWithheldEntirely() throws {
+        let url = try write(samples: [(now.addingTimeInterval(-13 * 60 * 60), 30, 12)])
+        defer { remove(url) }
+
+        XCTAssertNil(
+            ClaudePlanUsageReader(planUsageHistoryURL: url).read(now: now),
+            "Past twelve hours the number describes the app's last session, not the account."
+        )
+    }
+
+    func testStalenessIsAskedAgainstTheCurrentMomentNotStored() {
+        let observedAt = now.addingTimeInterval(-45 * 60)
+        let usage = ModelUsageSnapshot(
+            inputTokens: 1,
+            outputTokens: 1,
+            cacheCreationInputTokens: 0,
+            cacheReadInputTokens: 0,
+            observedRequestCount: 1,
+            observedAt: now,
+            sevenDayWindow: PlanUsageWindow(usedPercent: 12, windowMinutes: 7 * 24 * 60),
+            planUsageObservedAt: observedAt
+        )
+
+        XCTAssertTrue(usage.planUsageIsStale(asOf: now))
+        XCTAssertFalse(
+            usage.planUsageIsStale(asOf: observedAt.addingTimeInterval(60)),
+            "A minute after the sample it is the current reading."
+        )
+    }
+
+    /// The cadence doubled to fifteen minutes, so the bracket has to survive
+    /// one dropped sample or it stops bracketing anything.
+    func testACollapseAcrossOneDroppedSampleStillBrackets() throws {
+        let turnover = now.addingTimeInterval(-2 * 60 * 60)
+        let url = try write(samples: [
+            (turnover, 98, 5),
+            (turnover.addingTimeInterval(30 * 60), 4, 5),
+            (now.addingTimeInterval(-60), 35, 5),
+        ])
+        defer { remove(url) }
+
+        let reading = try XCTUnwrap(ClaudePlanUsageReader(planUsageHistoryURL: url)
+            .read(now: now))
+
+        XCTAssertNotNil(
+            reading.fiveHourWindow?.estimatedResetsAt,
+            "A thirty-minute gap is one missed sample at a fifteen-minute cadence."
+        )
+    }
+
+    func testACollapseAcrossAWiderGapIsNotBracketed() throws {
+        let turnover = now.addingTimeInterval(-2 * 60 * 60)
+        let url = try write(samples: [
+            (turnover, 98, 5),
+            (turnover.addingTimeInterval(40 * 60), 4, 5),
+            (now.addingTimeInterval(-60), 35, 5),
+        ])
+        defer { remove(url) }
+
+        let reading = try XCTUnwrap(ClaudePlanUsageReader(planUsageHistoryURL: url)
+            .read(now: now))
+
+        XCTAssertNil(
+            reading.fiveHourWindow?.estimatedResetsAt,
+            "Forty minutes only proves the reset happened sometime in there."
+        )
+    }
+
+    func testASampleOlderThanADayIsWithheld() throws {
         // The desktop app was closed for a day; the last number it wrote says
         // nothing about the account now.
         let url = try write(samples: [(now.addingTimeInterval(-24 * 60 * 60), 90, 40)])
