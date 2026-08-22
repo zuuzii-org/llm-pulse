@@ -1135,7 +1135,15 @@ private struct ModelUsageCard: View {
     /// returned, so the honest answer is that it is unknown.
     private func planUsageResetText(_ window: PlanUsageWindow) -> String {
         guard let resetsAt = window.resetsAt else {
-            return PulseL10n.text("重置时间未知", language: language)
+            // A five-hour window at zero has not started rather than gone
+            // missing: it opens on the first request after the previous one
+            // expired, which is why the history is full of 0 → 6 jumps. That
+            // is a third of the recorded time on a real machine, so calling
+            // it "unknown" would spend a third of the product's life implying
+            // its own data is broken.
+            return window.hasNotStarted
+                ? PulseL10n.text("尚未开始", language: language)
+                : PulseL10n.text("重置时间未知", language: language)
         }
         let moment = PulseDisplayClock.concrete(resetsAt, language: language)
         // The vendor's own value gets stated; a bracketed one keeps its "约".
@@ -1152,6 +1160,11 @@ private struct ModelUsageCard: View {
             return PulseL10n.text("由 Claude Code 提供的准确时间", language: language)
         case .inferred:
             return PulseL10n.text("由用量记录推算，误差在采样间隔以内", language: language)
+        case nil where window.hasNotStarted:
+            return PulseL10n.text(
+                "5 小时窗口在下一次请求时开始计时，届时按 5 小时整重置",
+                language: language
+            )
         case nil:
             return PulseL10n.text(
                 "该窗口开启时桌面应用未在采样，无法推算重置时间；接入 Claude Code 可获得准确时间",

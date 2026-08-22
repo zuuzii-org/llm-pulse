@@ -47,6 +47,18 @@ struct PlanUsageWindow: Equatable, Codable, Sendable {
     }
 
     var remainingPercent: Int { 100 - usedPercent }
+
+    /// Whether this window is idle rather than merely unmeasured.
+    ///
+    /// A five-hour window opens on the first request after the previous one
+    /// expired, so nothing is consumed and no reset exists until then — the
+    /// `0 → 6` jumps that fill the vendor's history are exactly that moment.
+    /// The weekly window is anchored to the calendar and is never waiting on
+    /// a request, so it is excluded: a weekly zero means a fresh week, which
+    /// does have a reset time and normally reports one.
+    var hasNotStarted: Bool {
+        usedPercent == 0 && resetsAt == nil && windowMinutes == 5 * 60
+    }
 }
 
 struct ModelUsageSnapshot: Equatable, Codable, Sendable {

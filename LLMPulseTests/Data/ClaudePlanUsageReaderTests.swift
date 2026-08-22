@@ -51,6 +51,55 @@ final class ClaudePlanUsageReaderTests: XCTestCase {
         XCTAssertEqual(reading.fiveHourWindow?.usedPercent, 24)
     }
 
+    // MARK: - Idle windows
+
+    /// A third of the recorded time on a real machine sits at zero, because a
+    /// five-hour window waits for a request to open it. Calling that "unknown"
+    /// spends a third of the product's life implying its own data is broken.
+    func testAFiveHourWindowAtZeroReadsAsNotStartedRatherThanUnknown() throws {
+        let window = try XCTUnwrap(
+            PlanUsageWindow(usedPercent: 0, windowMinutes: 5 * 60)
+        )
+
+        XCTAssertTrue(window.hasNotStarted)
+    }
+
+    func testAWindowWithAnyUsageHasStartedEvenWithoutAResetTime() throws {
+        let window = try XCTUnwrap(
+            PlanUsageWindow(usedPercent: 1, windowMinutes: 5 * 60)
+        )
+
+        XCTAssertFalse(
+            window.hasNotStarted,
+            "Consumption proves the window opened; only its reset is unknown."
+        )
+    }
+
+    func testAKnownResetMeansTheWindowIsOpenEvenAtZeroPercent() throws {
+        let window = try XCTUnwrap(PlanUsageWindow(
+            usedPercent: 0,
+            windowMinutes: 5 * 60,
+            resetsAt: now.addingTimeInterval(3 * 60 * 60),
+            resetSource: .reported
+        ))
+
+        XCTAssertFalse(
+            window.hasNotStarted,
+            "A reported reset is proof of an open window rounding down to zero."
+        )
+    }
+
+    func testAWeeklyWindowAtZeroIsAFreshWeekNotAnIdleOne() throws {
+        let window = try XCTUnwrap(
+            PlanUsageWindow(usedPercent: 0, windowMinutes: 7 * 24 * 60)
+        )
+
+        XCTAssertFalse(
+            window.hasNotStarted,
+            "The weekly window is anchored to the calendar, never to a request."
+        )
+    }
+
     // MARK: - Staleness
 
     /// The regression this file's cutoff caused.

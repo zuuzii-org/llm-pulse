@@ -165,6 +165,8 @@
 "账户级用量 · 数据截至 %@" = "Account-wide usage · as of %@";
 "约 %@ 重置" = "Resets around %@";
 "重置时间未知" = "Reset time unknown";
+"尚未开始" = "Not started";
+"5 小时窗口在下一次请求时开始计时，届时按 5 小时整重置" = "The 5-hour window starts at your next request and resets five hours later.";
 "Claude Code 用量桥接" = "Claude Code Usage Bridge";
 "状态" = "Status";
 "未接入" = "Not connected";

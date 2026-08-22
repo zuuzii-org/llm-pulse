@@ -819,6 +819,19 @@ sign_embedded_code() {
     /usr/bin/sort -rn | /usr/bin/cut -f2-)
 }
 
+# This script runs under `umask 077` so that nothing it writes is readable by
+# other accounts. Xcode inherits that umask, which is right for the build
+# directory and wrong for a shipped bundle: `usage-bridge.sh` came out 0700,
+# and an app installed by one account is normally used from another. Widen the
+# resources that are meant to be read, before signing — afterwards would
+# invalidate the signature.
+normalize_bundle_resource_modes() {
+  local app="$1"
+  local bridge="$app/Contents/Resources/usage-bridge.sh"
+  [[ -f "$bridge" ]] || die "usage bridge missing from the built bundle"
+  run /bin/chmod 755 "$bridge"
+}
+
 build_and_sign_app() {
   local built_version
   log "building macOS $VERSION Release for arm64 + x86_64"
@@ -851,6 +864,7 @@ build_and_sign_app() {
     [[ "$built_version" == "$VERSION" ]] || \
       die "built app version $built_version does not match $VERSION"
   fi
+  normalize_bundle_resource_modes "$APP_PATH"
   prepare_sparkle_for_non_sandbox "$APP_PATH"
   verify_universal_code "$APP_PATH"
   verify_app_metadata "$APP_PATH"
