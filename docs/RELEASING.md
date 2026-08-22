@@ -1,6 +1,6 @@
 # LLM Pulse 发布流程
 
-本文档用于发布 LLM Pulse macOS 应用和配套插件。当前公开基准版本为 `2.6.0`，下一功能版本为 `2.7.0`，品牌署名统一使用 **Zuuzii**。
+本文档用于发布 LLM Pulse macOS 应用和配套插件。当前公开基准版本为 `2.6.1`，下一功能版本为 `2.7.0`，品牌署名统一使用 **Zuuzii**。
 
 ## 发布原则
 
@@ -110,7 +110,7 @@ swift scripts/sparkle_key_tool.swift public-key "$D/restored.key"
 ## 1. 锁定版本与源码
 
 ```bash
-export VERSION="2.6.0"
+export VERSION="2.6.1"
 export TAG="v${VERSION}"
 export NOTARY_PROFILE="LLMPulseNotary"
 
@@ -160,8 +160,8 @@ umask 077
 预期产物：
 
 ```text
-dist/LLM-Pulse-2.6.0.dmg
-dist/LLM-Pulse-2.6.0.dmg.sha256
+dist/LLM-Pulse-2.6.1.dmg
+dist/LLM-Pulse-2.6.1.dmg.sha256
 dist/appcast.xml
 ```
 
