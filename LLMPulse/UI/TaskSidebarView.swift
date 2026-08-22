@@ -1057,11 +1057,10 @@ private struct ModelUsageCard: View {
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
-                if let resetsAt = window.estimatedResetsAt {
-                    Text(planUsageResetText(resetsAt, window: window))
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
+                Text(planUsageResetText(window))
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .help(planUsageResetHelp(window))
                 Text(PulseL10n.text(
                     "已用 %d%%",
                     language: language,
@@ -1107,20 +1106,58 @@ private struct ModelUsageCard: View {
                 PulseDisplayClock.concrete(observedAt, language: language)
             )
         }
-        return usage.hasEstimatedResets
-            ? PulseL10n.text("账户级用量 · 重置时间为估算", language: language)
-            : PulseL10n.text("账户级用量 · 无重置时间", language: language)
+        if usage.hasInferredResets {
+            return PulseL10n.text("账户级用量 · 重置时间为估算", language: language)
+        }
+        if usage.hasReportedResets {
+            return PulseL10n.text("账户级用量 · 重置时间来自 Claude Code", language: language)
+        }
+        return PulseL10n.text("账户级用量 · 无重置时间", language: language)
     }
 
     /// "约 8月23日 20:59 重置" — a full date and clock time on the product's
     /// display timezone, the same for both windows so the two rows read as
     /// one system.
-    private func planUsageResetText(_ resetsAt: Date, window: PlanUsageWindow) -> String {
-        PulseL10n.text(
-            "约 %@ 重置",
-            language: language,
-            PulseDisplayClock.concrete(resetsAt, language: language)
-        )
+    ///
+    /// When the reset cannot be inferred the row says so rather than going
+    /// blank. A window that opened while the desktop app was closed has no
+    /// sampled opening to bracket, which is now the ordinary case rather than
+    /// the exception — and a silent gap where a time belongs reads as a
+    /// broken app, which is exactly how it was reported.
+    ///
+    /// Nothing is offered in its place on purpose. The window containing the
+    /// newest sample opened somewhere in the five hours before it, and every
+    /// tighter bound available here rests on a run of non-decreasing
+    /// percentages being one window — which a reset hides whenever usage
+    /// before it was lower than usage after, the `0 → 5` case the opening
+    /// detector itself is built to catch. A ceiling that can sit earlier than
+    /// the real reset would have the user waiting on quota that has not
+    /// returned, so the honest answer is that it is unknown.
+    private func planUsageResetText(_ window: PlanUsageWindow) -> String {
+        guard let resetsAt = window.resetsAt else {
+            return PulseL10n.text("重置时间未知", language: language)
+        }
+        let moment = PulseDisplayClock.concrete(resetsAt, language: language)
+        // The vendor's own value gets stated; a bracketed one keeps its "约".
+        // Wearing the same words would make the hedge meaningless on the rows
+        // that actually need it.
+        return window.resetSource == .reported
+            ? PulseL10n.text("%@ 重置", language: language, moment)
+            : PulseL10n.text("约 %@ 重置", language: language, moment)
+    }
+
+    private func planUsageResetHelp(_ window: PlanUsageWindow) -> String {
+        switch window.resetSource {
+        case .reported:
+            return PulseL10n.text("由 Claude Code 提供的准确时间", language: language)
+        case .inferred:
+            return PulseL10n.text("由用量记录推算，误差在采样间隔以内", language: language)
+        case nil:
+            return PulseL10n.text(
+                "该窗口开启时桌面应用未在采样，无法推算重置时间；接入 Claude Code 可获得准确时间",
+                language: language
+            )
+        }
     }
 
     private func planUsageAccessibilityText(
@@ -1133,12 +1170,11 @@ private struct ModelUsageCard: View {
             title,
             window.usedPercent
         )
-        guard let resetsAt = window.estimatedResetsAt else { return base }
         return PulseL10n.text(
             "%@，%@",
             language: language,
             base,
-            planUsageResetText(resetsAt, window: window)
+            planUsageResetText(window)
         )
     }
 

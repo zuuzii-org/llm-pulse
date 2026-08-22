@@ -6,26 +6,44 @@ import Foundation
 /// date, and the vendor app that records these percentages never persists
 /// when a window turns over. Inventing a reset time would let this reading be
 /// interpreted with Codex's semantics, which is the confusion worth avoiding.
+/// Where a window's reset time came from, which decides how it may be phrased.
+enum PlanUsageResetSource: String, Equatable, Codable, Sendable {
+    /// The vendor's own `resets_at`, relayed by Claude Code's status line.
+    /// Exact, and stated without hedging.
+    case reported
+
+    /// Bracketed from a percentage collapse in the desktop app's history.
+    /// Carries the sampling cadence as its error bar, so it is always shown
+    /// as an approximation.
+    case inferred
+}
+
 struct PlanUsageWindow: Equatable, Codable, Sendable {
     let usedPercent: Int
     let windowMinutes: Int
 
-    /// When the window is expected to reset, inferred rather than reported.
+    /// When the window resets, or `nil` when nothing available knows.
     ///
-    /// The vendor never persists a reset time, but the moment one happens
-    /// leaves a mark: the recorded percentage collapses between two adjacent
-    /// samples. The weekly reset is a fixed anchor, so one observed collapse
-    /// projects forward indefinitely; the five-hour window resets five hours
-    /// after the first request that opened it, which the samples bracket to
-    /// within their cadence. Estimated, and displayed as such — never nil'd
-    /// into looking authoritative.
-    let estimatedResetsAt: Date?
+    /// The desktop app receives `resets_at` from the vendor and drops it,
+    /// persisting only the percentage — so this is either relayed from Claude
+    /// Code's status line, where the real value survives, or inferred from
+    /// the mark a reset leaves behind: the percentage collapsing between two
+    /// adjacent samples. `resetSource` says which, because a measured time
+    /// and a bracketed one cannot honestly wear the same words.
+    let resetsAt: Date?
+    let resetSource: PlanUsageResetSource?
 
-    init?(usedPercent: Int, windowMinutes: Int, estimatedResetsAt: Date? = nil) {
+    init?(
+        usedPercent: Int,
+        windowMinutes: Int,
+        resetsAt: Date? = nil,
+        resetSource: PlanUsageResetSource = .inferred
+    ) {
         guard (0...100).contains(usedPercent), windowMinutes > 0 else { return nil }
         self.usedPercent = usedPercent
         self.windowMinutes = windowMinutes
-        self.estimatedResetsAt = estimatedResetsAt
+        self.resetsAt = resetsAt
+        self.resetSource = resetsAt == nil ? nil : resetSource
     }
 
     var remainingPercent: Int { 100 - usedPercent }
@@ -77,9 +95,16 @@ struct ModelUsageSnapshot: Equatable, Codable, Sendable {
 
     var hasPlanUsage: Bool { fiveHourWindow != nil || sevenDayWindow != nil }
 
-    var hasEstimatedResets: Bool {
-        fiveHourWindow?.estimatedResetsAt != nil
-            || sevenDayWindow?.estimatedResetsAt != nil
+    /// Whether any window carries the vendor's own reset time rather than a
+    /// bracketed one. Drives the footnote: relayed values need no caveat.
+    var hasReportedResets: Bool {
+        fiveHourWindow?.resetSource == .reported
+            || sevenDayWindow?.resetSource == .reported
+    }
+
+    var hasInferredResets: Bool {
+        fiveHourWindow?.resetSource == .inferred
+            || sevenDayWindow?.resetSource == .inferred
     }
 
     /// Whether the account-level percentages must be shown with the time they

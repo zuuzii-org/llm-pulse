@@ -186,7 +186,7 @@ final class ClaudePlanUsageReaderTests: XCTestCase {
             .read(now: now))
 
         XCTAssertNotNil(
-            reading.fiveHourWindow?.estimatedResetsAt,
+            reading.fiveHourWindow?.resetsAt,
             "A thirty-minute gap is one missed sample at a fifteen-minute cadence."
         )
     }
@@ -204,7 +204,7 @@ final class ClaudePlanUsageReaderTests: XCTestCase {
             .read(now: now))
 
         XCTAssertNil(
-            reading.fiveHourWindow?.estimatedResetsAt,
+            reading.fiveHourWindow?.resetsAt,
             "Forty minutes only proves the reset happened sometime in there."
         )
     }
@@ -286,13 +286,13 @@ final class ClaudePlanUsageReaderTests: XCTestCase {
             .read(now: now))
 
         let expected = collapseStart.addingTimeInterval(150 + 7 * 24 * 60 * 60)
-        let resetsAt = try XCTUnwrap(reading.sevenDayWindow?.estimatedResetsAt)
+        let resetsAt = try XCTUnwrap(reading.sevenDayWindow?.resetsAt)
         XCTAssertEqual(
             resetsAt.timeIntervalSince(expected), 0, accuracy: 1,
             "The anchor is the midpoint of the bracket around the collapse."
         )
         XCTAssertNil(
-            reading.fiveHourWindow?.estimatedResetsAt,
+            reading.fiveHourWindow?.resetsAt,
             "No window opening was observed, so the five-hour side stays silent."
         )
     }
@@ -310,7 +310,7 @@ final class ClaudePlanUsageReaderTests: XCTestCase {
             .read(now: now))
 
         let expected = opening.addingTimeInterval(150 + 5 * 60 * 60)
-        let resetsAt = try XCTUnwrap(reading.fiveHourWindow?.estimatedResetsAt)
+        let resetsAt = try XCTUnwrap(reading.fiveHourWindow?.resetsAt)
         XCTAssertEqual(resetsAt.timeIntervalSince(expected), 0, accuracy: 1)
     }
 
@@ -329,7 +329,7 @@ final class ClaudePlanUsageReaderTests: XCTestCase {
             .read(now: now))
 
         let expected = turnover.addingTimeInterval(150 + 5 * 60 * 60)
-        let resetsAt = try XCTUnwrap(reading.fiveHourWindow?.estimatedResetsAt)
+        let resetsAt = try XCTUnwrap(reading.fiveHourWindow?.resetsAt)
         XCTAssertEqual(resetsAt.timeIntervalSince(expected), 0, accuracy: 1)
     }
 
@@ -348,7 +348,7 @@ final class ClaudePlanUsageReaderTests: XCTestCase {
         let reading = try XCTUnwrap(ClaudePlanUsageReader(planUsageHistoryURL: url)
             .read(now: now))
 
-        XCTAssertNil(reading.fiveHourWindow?.estimatedResetsAt)
+        XCTAssertNil(reading.fiveHourWindow?.resetsAt)
     }
 
     func testAnIdleFiveHourWindowCarriesNoEstimate() throws {
@@ -364,7 +364,7 @@ final class ClaudePlanUsageReaderTests: XCTestCase {
             .read(now: now))
 
         XCTAssertNil(
-            reading.fiveHourWindow?.estimatedResetsAt,
+            reading.fiveHourWindow?.resetsAt,
             "Nothing is counting down while the window sits at zero."
         )
     }
@@ -383,7 +383,7 @@ final class ClaudePlanUsageReaderTests: XCTestCase {
         let reading = try XCTUnwrap(ClaudePlanUsageReader(planUsageHistoryURL: url)
             .read(now: now))
 
-        XCTAssertNil(reading.sevenDayWindow?.estimatedResetsAt)
+        XCTAssertNil(reading.sevenDayWindow?.resetsAt)
     }
 
     func testARescaledPercentageIsNotAWeeklyReset() throws {
@@ -400,7 +400,7 @@ final class ClaudePlanUsageReaderTests: XCTestCase {
         let reading = try XCTUnwrap(ClaudePlanUsageReader(planUsageHistoryURL: url)
             .read(now: now))
 
-        XCTAssertNil(reading.sevenDayWindow?.estimatedResetsAt)
+        XCTAssertNil(reading.sevenDayWindow?.resetsAt)
     }
 
     func testAnotherOrganizationsCollapseIsNotThisOnes() throws {
@@ -418,7 +418,7 @@ final class ClaudePlanUsageReaderTests: XCTestCase {
             .read(now: now))
 
         XCTAssertEqual(reading.sevenDayWindow?.usedPercent, 12)
-        XCTAssertNil(reading.sevenDayWindow?.estimatedResetsAt)
+        XCTAssertNil(reading.sevenDayWindow?.resetsAt)
     }
 
     func testAWindowCannotBeBuiltFromAnInvalidPercentage() {

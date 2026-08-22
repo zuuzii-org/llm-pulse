@@ -101,7 +101,8 @@ final class ClaudeTaskRepositoryTests: XCTestCase {
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         let repository = ClaudeTaskRepository(
             paths: ClaudePaths(claudeHome: empty),
-            probe: FakeProcessProbe(livePIDs: [:])
+            probe: FakeProcessProbe(livePIDs: [:]),
+            cliUsageURL: empty.appendingPathComponent("claude-cli-usage.json")
         )
 
         let snapshot = await repository.snapshot(now: base)
@@ -123,6 +124,77 @@ final class ClaudeTaskRepositoryTests: XCTestCase {
         )
 
         XCTAssertTrue(snapshot.tasks.isEmpty)
+    }
+
+    func testTheBridgeOutranksTheDesktopHistoryWhenItSawUsageMoreRecently() async throws {
+        let tree = try makeTree()
+        defer { tree.remove() }
+        try tree.writeTranscript(sessionID: sessionID, project: "llm-pulse", records: [
+            userRecord(at: base),
+        ])
+        try tree.writeDesktopUsage(samples: [(base.addingTimeInterval(-3 * 60 * 60), 21, 14)])
+        try tree.writeBridgeUsage(
+            observedAt: base.addingTimeInterval(-30),
+            fiveHour: (75, base.addingTimeInterval(90 * 60)),
+            sevenDay: (29, base.addingTimeInterval(3 * 24 * 60 * 60))
+        )
+
+        let snapshot = await tree.repository(livePIDs: [:]).snapshot(now: base)
+        let usage = try XCTUnwrap(snapshot.usage)
+
+        XCTAssertEqual(usage.fiveHourWindow?.usedPercent, 75)
+        XCTAssertEqual(
+            usage.fiveHourWindow?.resetSource,
+            .reported,
+            "The vendor's own reset must not be downgraded to a bracketed guess."
+        )
+        XCTAssertEqual(usage.sevenDayWindow?.usedPercent, 29)
+    }
+
+    /// A reset time is an absolute moment, so it stays true even when the
+    /// other source happens to hold the fresher percentage. Dropping it would
+    /// make the row claim ignorance about something already known.
+    func testAReportedResetSurvivesEvenWhenTheDesktopHistoryIsFresher() async throws {
+        let tree = try makeTree()
+        defer { tree.remove() }
+        try tree.writeTranscript(sessionID: sessionID, project: "llm-pulse", records: [
+            userRecord(at: base),
+        ])
+        try tree.writeDesktopUsage(samples: [(base.addingTimeInterval(-60), 40, 18)])
+        try tree.writeBridgeUsage(
+            observedAt: base.addingTimeInterval(-20 * 60),
+            fiveHour: (33, base.addingTimeInterval(2 * 60 * 60)),
+            sevenDay: nil
+        )
+
+        let snapshot = await tree.repository(livePIDs: [:]).snapshot(now: base)
+        let usage = try XCTUnwrap(snapshot.usage)
+
+        XCTAssertEqual(
+            usage.fiveHourWindow?.usedPercent,
+            40,
+            "The percentage comes from whichever source saw it last."
+        )
+        XCTAssertEqual(usage.fiveHourWindow?.resetSource, .reported)
+        XCTAssertEqual(
+            usage.fiveHourWindow?.resetsAt,
+            base.addingTimeInterval(2 * 60 * 60)
+        )
+    }
+
+    func testWithoutTheBridgeTheDesktopHistoryStillDrivesTheCard() async throws {
+        let tree = try makeTree()
+        defer { tree.remove() }
+        try tree.writeTranscript(sessionID: sessionID, project: "llm-pulse", records: [
+            userRecord(at: base),
+        ])
+        try tree.writeDesktopUsage(samples: [(base.addingTimeInterval(-60), 40, 18)])
+
+        let snapshot = await tree.repository(livePIDs: [:]).snapshot(now: base)
+        let usage = try XCTUnwrap(snapshot.usage)
+
+        XCTAssertEqual(usage.fiveHourWindow?.usedPercent, 40)
+        XCTAssertEqual(usage.sevenDayWindow?.usedPercent, 18)
     }
 
     func testTheSourceAdapterPresentsTheClaudeProfile() async throws {
@@ -275,12 +347,45 @@ final class ClaudeTaskRepositoryTests: XCTestCase {
             try? FileManager.default.removeItem(at: root)
         }
 
+        /// The bridge file lives in this app's own directory, so a test that
+        /// let it default would read whatever the developer's machine holds.
+        var cliUsageURL: URL { root.appendingPathComponent("claude-cli-usage.json") }
+
         func repository(livePIDs: [Int32: Date]) -> ClaudeTaskRepository {
             ClaudeTaskRepository(
                 paths: paths,
                 probe: FakeProcessProbe(livePIDs: livePIDs),
-                discoveryInterval: 0
+                discoveryInterval: 0,
+                cliUsageURL: cliUsageURL
             )
+        }
+
+        func writeDesktopUsage(samples: [(Date, Int, Int)]) throws {
+            let rows = samples.map { sample in
+                "{\"t\":\(Int(sample.0.timeIntervalSince1970 * 1_000)),"
+                    + "\"org\":\"org-1\","
+                    + "\"u\":{\"fh\":\(sample.1),\"sd\":\(sample.2)}}"
+            }
+            let document = "{\"version\":2,\"samples\":[\(rows.joined(separator: ","))]}"
+            try Data(document.utf8).write(to: paths.planUsageHistoryURL)
+        }
+
+        func writeBridgeUsage(
+            observedAt: Date,
+            fiveHour: (Int, Date)?,
+            sevenDay: (Int, Date)?
+        ) throws {
+            func window(_ value: (Int, Date)?) -> String? {
+                guard let value else { return nil }
+                return "{\"used_percentage\":\(value.0),"
+                    + "\"resets_at\":\(Int(value.1.timeIntervalSince1970))}"
+            }
+            var limits: [String] = []
+            if let five = window(fiveHour) { limits.append("\"five_hour\":\(five)") }
+            if let seven = window(sevenDay) { limits.append("\"seven_day\":\(seven)") }
+            let document = "{\"observedAt\":\(Int(observedAt.timeIntervalSince1970)),"
+                + "\"rateLimits\":{\(limits.joined(separator: ","))}}"
+            try Data(document.utf8).write(to: cliUsageURL)
         }
 
         func writeRegistry(

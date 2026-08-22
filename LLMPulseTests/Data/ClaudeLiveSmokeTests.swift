@@ -79,8 +79,8 @@ final class ClaudeLiveSmokeTests: XCTestCase {
         5h=\(snapshot.usage?.fiveHourWindow?.usedPercent.description ?? "nil")% \
         7d=\(snapshot.usage?.sevenDayWindow?.usedPercent.description ?? "nil")%
         [claude-smoke] resets \
-        5h=\(snapshot.usage?.fiveHourWindow?.estimatedResetsAt?.description ?? "nil") \
-        7d=\(snapshot.usage?.sevenDayWindow?.estimatedResetsAt?.description ?? "nil")
+        5h=\(snapshot.usage?.fiveHourWindow?.resetsAt?.description ?? "nil") \
+        7d=\(snapshot.usage?.sevenDayWindow?.resetsAt?.description ?? "nil")
         [claude-smoke] membership tier=\(snapshot.membership?.tierDisplayName ?? "nil") \
         anchor=\(snapshot.membership?.subscriptionAnchor?.description ?? "nil") \
         trial=\(snapshot.membership?.trialEndsAt?.description ?? "nil") \

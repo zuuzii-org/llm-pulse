@@ -11,6 +11,7 @@ struct SettingsView: View {
     let requestNotificationAuthorization: @MainActor () async -> Void
 
     @State private var notificationAuthorizationStatus: UNAuthorizationStatus = .notDetermined
+    @State private var didCopyBridgeSnippet = false
 
     var body: some View {
         Form {
@@ -115,6 +116,33 @@ struct SettingsView: View {
                 Text("填写后覆盖自动推导的续费日；留空则按订阅起始日按月推算。")
             }
 
+            Section {
+                TimelineView(.periodic(from: .now, by: 5)) { context in
+                    LabeledContent(
+                        PulseL10n.text("状态", language: settings.appLanguage),
+                        value: bridgeStatus(asOf: context.date)
+                    )
+                }
+
+                Text(bridgeSnippet)
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button(
+                    didCopyBridgeSnippet
+                        ? PulseL10n.text("已复制", language: settings.appLanguage)
+                        : PulseL10n.text("复制配置", language: settings.appLanguage)
+                ) {
+                    copyBridgeSnippet()
+                }
+                .disabled(didCopyBridgeSnippet)
+            } header: {
+                Text("Claude Code 用量桥接")
+            } footer: {
+                Text("把上面这段加进 ~/.claude/settings.json 的顶层对象，即可让 5 小时和 7 天窗口显示 Claude Code 提供的准确重置时间。LLM Pulse 不会替你修改该文件；删掉这段即可恢复原状。")
+            }
+
             Section("系统") {
                 Toggle("登录时启动 LLM Pulse", isOn: launchAtLoginBinding)
 
@@ -208,6 +236,56 @@ struct SettingsView: View {
     /// than a claim about the real date.
     private static func defaultExpiryDate() -> Date {
         Calendar.current.date(byAdding: .month, value: 1, to: .now) ?? .now
+    }
+
+    /// The path is taken from the running bundle rather than assumed to be
+    /// in /Applications: a copy run from anywhere else would otherwise hand
+    /// the user a snippet pointing at a script that is not there.
+    private var bridgeCommand: String {
+        let script = Bundle.main.bundleURL
+            .appendingPathComponent("Contents/Resources/usage-bridge.sh")
+            .path
+        return "/bin/sh '\(script)'"
+    }
+
+    private var bridgeSnippet: String {
+        let escaped = bridgeCommand
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        return """
+        "statusLine": {
+          "type": "command",
+          "command": "\(escaped)",
+          "refreshInterval": 30
+        }
+        """
+    }
+
+    /// Reports what the bridge has actually delivered, not merely whether the
+    /// setting looks installed — a command that never runs and one that was
+    /// never added are indistinguishable from the user's side otherwise.
+    private func bridgeStatus(asOf now: Date) -> String {
+        let url = ClaudeCLIUsageReader.defaultURL()
+        guard let modified = (try? FileManager.default.attributesOfItem(atPath: url.path))?[
+            .modificationDate
+        ] as? Date else {
+            return PulseL10n.text("未接入", language: settings.appLanguage)
+        }
+        return PulseL10n.text(
+            "已接入 · 更新于 %@",
+            language: settings.appLanguage,
+            modified.pulseRelativeDescription(asOf: now, language: settings.appLanguage)
+        )
+    }
+
+    private func copyBridgeSnippet() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(bridgeSnippet, forType: .string)
+        didCopyBridgeSnippet = true
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            didCopyBridgeSnippet = false
+        }
     }
 
     private func refreshNotificationAuthorizationStatus() async {

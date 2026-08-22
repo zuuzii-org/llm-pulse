@@ -10,6 +10,8 @@ actor ClaudeTaskRepository {
     private let transcriptAdapter: ClaudeTranscriptAdapter
     private let agentObserver: ClaudeAgentActivityObserver
     private let planUsageReader: ClaudePlanUsageReader
+    private let cliUsageReader: ClaudeCLIUsageReader
+    private let cliUsageURL: URL
     private let accountReader: ClaudeAccountReader
     private let paths: ClaudePaths
     private let runningStaleInterval: TimeInterval
@@ -36,13 +38,18 @@ actor ClaudeTaskRepository {
     private var accountStamp: ClaudeFileStamp?
     private var accountObservation: MembershipObservation?
 
+    /// Same stamp-keyed parse for the optional CLI bridge file.
+    private var cliUsageStamp: ClaudeFileStamp?
+    private var cliUsageParsed: ClaudeCLIUsageReader.Parsed?
+
     init(
         paths: ClaudePaths,
         probe: any ClaudeProcessProbing = LibprocProcessProbe(),
         tailParser: ClaudeTranscriptTailParser = ClaudeTranscriptTailParser(),
         discoveryInterval: TimeInterval = 5,
         runningStaleInterval: TimeInterval = TaskRetentionPolicy.runningStale,
-        terminalRetentionInterval: TimeInterval = TaskRetentionPolicy.terminalRetention
+        terminalRetentionInterval: TimeInterval = TaskRetentionPolicy.terminalRetention,
+        cliUsageURL: URL = ClaudeCLIUsageReader.defaultURL()
     ) {
         registryReader = ClaudeSessionRegistryReader(
             sessionsDirectory: paths.sessionsDirectory,
@@ -58,6 +65,8 @@ actor ClaudeTaskRepository {
             planUsageHistoryURL: paths.planUsageHistoryURL
         )
         accountReader = ClaudeAccountReader(accountConfigURL: paths.accountConfigURL)
+        cliUsageReader = ClaudeCLIUsageReader(usageURL: cliUsageURL)
+        self.cliUsageURL = cliUsageURL
         self.paths = paths
         self.runningStaleInterval = runningStaleInterval
         self.terminalRetentionInterval = terminalRetentionInterval
@@ -190,15 +199,8 @@ actor ClaudeTaskRepository {
             totals.requestCount += record.tokens.requestCount
         }
 
-        let stamp = ClaudeFileStamp(path: paths.planUsageHistoryURL.path)
-        if stamp != planUsageStamp {
-            planUsageStamp = stamp
-            planUsageParsed = planUsageReader.parse()
-        }
-        let planUsage = planUsageParsed.flatMap {
-            planUsageReader.reading(from: $0, now: now)
-        }
-        guard totals.totalTokens > 0 || planUsage != nil else { return nil }
+        let planUsage = accountUsage(now: now)
+        guard totals.totalTokens > 0 || planUsage.observedAt != nil else { return nil }
 
         return ModelUsageSnapshot(
             inputTokens: totals.inputTokens,
@@ -207,10 +209,83 @@ actor ClaudeTaskRepository {
             cacheReadInputTokens: totals.cacheReadTokens,
             observedRequestCount: totals.requestCount,
             observedAt: now,
-            fiveHourWindow: planUsage?.fiveHourWindow,
-            sevenDayWindow: planUsage?.sevenDayWindow,
-            planUsageObservedAt: planUsage?.observedAt
+            fiveHourWindow: planUsage.fiveHour,
+            sevenDayWindow: planUsage.sevenDay,
+            planUsageObservedAt: planUsage.observedAt
         )
+    }
+
+    /// Account-level percentages from whichever of the two sources saw them
+    /// more recently.
+    ///
+    /// The desktop app's history is always there but moves only while that
+    /// app is open; the CLI bridge is there only if the user installed it,
+    /// and then refreshes on every request they make. Picking one source for
+    /// the whole card keeps the two rows commensurable — mixing a percentage
+    /// measured minutes ago with one from this morning would read as a single
+    /// observation.
+    private func accountUsage(now: Date) -> (
+        fiveHour: PlanUsageWindow?,
+        sevenDay: PlanUsageWindow?,
+        observedAt: Date?
+    ) {
+        let desktopStamp = ClaudeFileStamp(path: paths.planUsageHistoryURL.path)
+        if desktopStamp != planUsageStamp {
+            planUsageStamp = desktopStamp
+            planUsageParsed = planUsageReader.parse()
+        }
+        let desktop = planUsageParsed.flatMap {
+            planUsageReader.reading(from: $0, now: now)
+        }
+
+        let cliStamp = ClaudeFileStamp(path: cliUsageURL.path)
+        if cliStamp != cliUsageStamp {
+            cliUsageStamp = cliStamp
+            cliUsageParsed = cliUsageReader.parse()
+        }
+        let cli = cliUsageParsed.flatMap {
+            cliUsageReader.reading(from: $0, now: now)
+        }
+
+        guard desktop != nil || cli != nil else { return (nil, nil, nil) }
+        let cliLeads = (cli?.observedAt ?? .distantPast)
+            >= (desktop?.observedAt ?? .distantPast)
+        let leadFive = cliLeads ? cli?.fiveHourWindow : desktop?.fiveHourWindow
+        let restFive = cliLeads ? desktop?.fiveHourWindow : cli?.fiveHourWindow
+        let leadSeven = cliLeads ? cli?.sevenDayWindow : desktop?.sevenDayWindow
+        let restSeven = cliLeads ? desktop?.sevenDayWindow : cli?.sevenDayWindow
+
+        return (
+            Self.keepingBestKnownReset(leadFive, other: restFive, now: now),
+            Self.keepingBestKnownReset(leadSeven, other: restSeven, now: now),
+            cliLeads ? cli?.observedAt : desktop?.observedAt
+        )
+    }
+
+    /// A reset time is an absolute moment, so it stays true no matter which
+    /// source carried the fresher percentage. When the leading source has no
+    /// reset — or only a bracketed one — and the other holds the vendor's own
+    /// value with that moment still ahead, keeping it loses nothing and
+    /// spares the user a row that claims not to know.
+    private static func keepingBestKnownReset(
+        _ window: PlanUsageWindow?,
+        other: PlanUsageWindow?,
+        now: Date
+    ) -> PlanUsageWindow? {
+        guard let window, window.resetSource != .reported else { return window }
+        guard let other,
+              other.resetSource == .reported,
+              let reported = other.resetsAt,
+              reported > now
+        else {
+            return window
+        }
+        return PlanUsageWindow(
+            usedPercent: window.usedPercent,
+            windowMinutes: window.windowMinutes,
+            resetsAt: reported,
+            resetSource: .reported
+        ) ?? window
     }
 
     // MARK: - Composition

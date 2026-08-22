@@ -258,7 +258,7 @@ struct ClaudePlanUsageReader: Sendable {
                 PlanUsageWindow(
                     usedPercent: $0,
                     windowMinutes: Self.fiveHourMinutes,
-                    estimatedResetsAt: fiveHourResetsAt
+                    resetsAt: fiveHourResetsAt
                 )
             }
             : nil
@@ -267,7 +267,7 @@ struct ClaudePlanUsageReader: Sendable {
                 PlanUsageWindow(
                     usedPercent: $0,
                     windowMinutes: Self.sevenDayMinutes,
-                    estimatedResetsAt: sevenDayResetsAt
+                    resetsAt: sevenDayResetsAt
                 )
             }
             : nil

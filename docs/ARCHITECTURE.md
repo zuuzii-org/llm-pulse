@@ -107,7 +107,20 @@ Claude 模型页的用量卡片分两部分，二者的保证强度不同，因�
   - **5 小时窗**必须有正面证据才显示：样本是刚采的（≤30 分钟，`liveInterval`），或者样本落在一个可证明尚未过期的已观测窗口内。否则隐去。这条比放宽阈值本身更重要——5 小时窗一天翻好几次，本机就记录过 21% → 十小时盲区 → 7%，期间显示 21% 不是「旧」，是**错**。
   - **7 天窗**用周锚点判断样本是否早于最近一次重置：早于则隐去（那是上周的预算），否则百分比在同一周内只增不减，旧值仍是有效下界。无锚点时按 12 小时边界接受——万一漏掉一次周重置，结果是高估用量，是安全的错误方向。
   - 幸存的旧值一律带「数据截至 HH:mm」标注（北京时间），不伪装成当前值。
-- **重置时间是上游主动丢弃的，不是采不到。** 桌面应用收到的是 `{resets_at, utilization}`（asar 内 `kdn=P({resets_at:...,utilization:...})`），但落盘 `plan-usage-history.json` 时只留 `{fh, sd}` 整数。所以沿这条路径永远拿不到真实重置时间——这是上游的设计取舍，不是本应用的解析缺陷。CLI 侧则从响应头 `anthropic-ratelimit-unified-{five_hour,seven_day}-{utilization,reset}` 解析出完整值，并通过 statusLine 契约对外暴露；启用那条通道可以让整套「靠百分比坍缩反推」的逻辑退役（尚未实现，需用户显式授权写入 `~/.claude/settings.json`）。
+- **重置时间是上游主动丢弃的，不是采不到。** 桌面应用收到的是 `{resets_at, utilization}`（asar 内 `kdn=P({resets_at:...,utilization:...})`），但落盘 `plan-usage-history.json` 时只留 `{fh, sd}` 整数。所以沿这条路径永远拿不到真实重置时间——这是上游的设计取舍，不是本应用的解析缺陷。
+
+### 可选：Claude Code 用量桥接
+
+CLI 侧从响应头 `anthropic-ratelimit-unified-{five_hour,seven_day}-{utilization,reset}` 解析出完整值，并通过 statusLine 契约以 JSON 喂给用户配置的命令。`LLMPulse/Resources/usage-bridge.sh` 就是那个命令：纯 `/bin/sh` + `/usr/bin/plutil`（均为基础系统自带，不引入嵌套可执行文件、不影响签名与公证），只抽 `rate_limits` 子树，加一个观测时刻，原子写入 `~/Library/Application Support/LLM Pulse/claude-cli-usage.json`（0600）。payload 里的 session id、工作目录、模型、转录一概不取，测试对脚本正文（剥除注释后）断言这一点。
+
+**安装由用户自己完成，LLM Pulse 绝不写 `~/.claude/settings.json`。** 设置页提供配置片段、复制按钮和实时接入状态；状态读的是桥接文件的 mtime，而不是配置看起来装没装——命令装了却从不执行和压根没装，从用户视角无法区分。
+
+两个源的取舍在 `ClaudeTaskRepository.accountUsage(now:)`：
+
+- **整卡取观测时刻更新的那一源**，不逐窗口混用——把几分钟前的百分比和今早的百分比并排画成一次观测，比少显示一行更糟。
+- **例外：重置时间是绝对时刻，与谁的百分比更新无关。** 若领先源没有重置时间（或只有推算值），而另一源持有尚未过去的上游真值，则保留该真值。
+- 有真实 `resets_at` 后，陈旧判定从推理变成算术：百分比仍描述当前窗口，当且仅当该窗口尚未重置。
+- `PlanUsageWindow.resetSource` 区分 `.reported` 与 `.inferred`，界面据此措辞：真值直接写「8月27日 20:59 重置」，推算值保留「约」。两者共用一套措辞会让「约」失去意义。
 
 `plan-usage-history.json` 位于 Application Support 而非 `~/.claude`，因此 `CLAUDE_CONFIG_DIR` 不能重定向它，另有 `CLAUDE_APP_SUPPORT_DIR` 作为注入点。
 
