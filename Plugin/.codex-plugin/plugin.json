@@ -1,6 +1,6 @@
 {
   "name": "llm-pulse",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "description": "Privacy-minimized Codex lifecycle events for the LLM Pulse macOS companion app.",
   "author": {
     "name": "Zuuzii"
