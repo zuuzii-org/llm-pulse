@@ -828,6 +828,12 @@ sign_embedded_code() {
 normalize_bundle_resource_modes() {
   local app="$1"
   local bridge="$app/Contents/Resources/usage-bridge.sh"
+  # A rehearsal never builds, so the bundle it would inspect does not exist.
+  # `require_directory` above takes the same escape for the same reason.
+  if is_true "$DRY_RUN"; then
+    log "[dry-run] skip usage bridge presence check and mode normalization"
+    return
+  fi
   [[ -f "$bridge" ]] || die "usage bridge missing from the built bundle"
   run /bin/chmod 755 "$bridge"
 }
