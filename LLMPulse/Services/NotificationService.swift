@@ -26,19 +26,24 @@ enum PulseNotificationKind: String {
         }
     }
 
-    func title(language: AppLanguage) -> String {
+    func title(
+        modelDisplayName: String,
+        language: AppLanguage
+    ) -> String {
+        let statusTitle: String
         switch self {
         case .waitingForApproval:
-            return PulseL10n.text("Codex 等待授权", language: language)
+            statusTitle = PulseL10n.text("等待授权", language: language)
         case .waitingForAnswer:
-            return PulseL10n.text("Codex 等待你的回答", language: language)
+            statusTitle = PulseL10n.text("等待你的回答", language: language)
         case .completed:
-            return PulseL10n.text("任务已完成", language: language)
+            statusTitle = PulseL10n.text("任务已完成", language: language)
         case .failed:
-            return PulseL10n.text("任务执行失败", language: language)
+            statusTitle = PulseL10n.text("任务执行失败", language: language)
         case .interrupted:
-            return PulseL10n.text("任务已中断", language: language)
+            statusTitle = PulseL10n.text("任务已中断", language: language)
         }
+        return "\(modelDisplayName) · \(statusTitle)"
     }
 
     var categoryIdentifier: String {
@@ -147,6 +152,12 @@ struct TaskNotificationRoute: Equatable, Sendable {
     var allowsCodexFallback: Bool {
         profileID == .codex && sessionID == threadID
     }
+
+    /// Keeps notification grouping local to one runtime session. Raw thread
+    /// IDs are not globally unique once several model runtimes are monitored.
+    var notificationThreadIdentifier: String {
+        "llm-pulse.task.\(profileID.rawValue).\(sessionID)"
+    }
 }
 
 struct RateLimitNotificationAlert: Equatable, Sendable {
@@ -185,12 +196,37 @@ struct CompletionNotificationSummary: Equatable, Sendable {
         let summaryTitles = tasks.prefix(3).map {
             "\($0.projectDisplayName(language: language)) · \($0.title)"
         }
-        title = PulseL10n.text("%d 个任务已完成", language: language, tasks.count)
+        let taskCountTitle = PulseL10n.text(
+            "%d 个任务已完成",
+            language: language,
+            tasks.count
+        )
+        let modelDisplayNames = Set(tasks.map(\.identity.displayName))
+        if modelDisplayNames.count == 1, let modelDisplayName = modelDisplayNames.first {
+            title = "\(modelDisplayName) · \(taskCountTitle)"
+        } else {
+            title = taskCountTitle
+        }
         subtitle = projectCount == 1
             ? PulseL10n.text("同一项目", language: language)
             : PulseL10n.text("来自 %d 个项目", language: language, projectCount)
         body = summaryTitles.joined(separator: " · ")
             + (tasks.count > summaryTitles.count ? " · …" : "")
+    }
+}
+
+enum CompletionNotificationBatching {
+    static func groupsByProfile(_ tasks: [PulseTask]) -> [[PulseTask]] {
+        Dictionary(grouping: tasks, by: \.profileID)
+            .sorted { $0.key.rawValue < $1.key.rawValue }
+            .map { group in
+                group.value.sorted { lhs, rhs in
+                    if lhs.updatedAt != rhs.updatedAt {
+                        return lhs.updatedAt < rhs.updatedAt
+                    }
+                    return lhs.id < rhs.id
+                }
+            }
     }
 }
 
@@ -200,6 +236,10 @@ enum PulseNotificationAction {
     static let snooze15Minutes = "LLM_PULSE_SNOOZE_15_MINUTES"
     static let snoozeOneHour = "LLM_PULSE_SNOOZE_ONE_HOUR"
     static let markViewed = "LLM_PULSE_MARK_VIEWED"
+
+    static func openTaskTitle(language: AppLanguage) -> String {
+        PulseL10n.text("打开任务", language: language)
+    }
 }
 
 enum PulseNotificationCategory {
@@ -218,17 +258,59 @@ enum NotificationPostOutcome: Equatable {
 
 enum TaskNotificationSnapshotReliability {
     static func mayBeIncomplete(_ snapshot: TaskSnapshot) -> Bool {
-        // Task existence and terminal state are rooted in rollout data. A
-        // degraded rollout read may omit only some files, while receipts and
-        // optional app/plugin sources do not define task-list completeness.
+        // Task existence and terminal state come from a runtime's authoritative
+        // registry, metadata, and event inputs. `runtimeSource` additionally
+        // covers source-wide timeout and identity failures before an
+        // adapter-specific health item exists.
         snapshot.health.contains {
-            $0.adapter == .rolloutJSONL && $0.status != .healthy
+            switch $0.adapter {
+            case .runtimeSource,
+                 .rolloutJSONL,
+                 .claudeSessionRegistry,
+                 .claudeTranscript,
+                 .zcodeSQLite,
+                 .zcodeEventLog:
+                $0.status != .healthy
+            default:
+                false
+            }
         }
     }
 }
 
 @MainActor
 enum SnoozeNotificationPolicy {
+    static func shouldKeep(
+        userInfo: [AnyHashable: Any],
+        hubSnapshot: PulseHubSnapshot,
+        settings: PulseSettings,
+        asOf date: Date
+    ) -> Bool {
+        if let route = TaskNotificationRoute(userInfo: userInfo),
+           userInfo["notificationKind"] as? String != nil {
+            guard let model = hubSnapshot.model(for: route.profileID) else {
+                // A fresh Hub without this profile is authoritative: the
+                // runtime is no longer configured, so its snooze is obsolete.
+                return hubSnapshot.refreshedAt == .distantPast
+            }
+            return shouldKeep(
+                userInfo: userInfo,
+                snapshot: model.taskSnapshot,
+                settings: settings,
+                asOf: date
+            )
+        }
+
+        // Quota notifications remain Codex-only and retain their weekly-window
+        // semantics. No other model snapshot participates in this decision.
+        return shouldKeep(
+            userInfo: userInfo,
+            snapshot: hubSnapshot.codexTaskSnapshot ?? .empty,
+            settings: settings,
+            asOf: date
+        )
+    }
+
     static func shouldKeep(
         userInfo: [AnyHashable: Any],
         snapshot: TaskSnapshot,
@@ -272,7 +354,9 @@ enum SnoozeNotificationPolicy {
             }
             guard let rateLimits = snapshot.rateLimits else {
                 return snapshot.health.contains {
-                    ($0.adapter == .appServer || $0.adapter == .rolloutJSONL)
+                    ($0.adapter == .appServer
+                        || $0.adapter == .rolloutJSONL
+                        || $0.adapter == .runtimeSource)
                         && $0.status != .healthy
                 }
             }
@@ -423,21 +507,25 @@ final class NotificationService {
 
         let content = UNMutableNotificationContent()
         let language = settings.appLanguage
-        let notificationTitle = kind.title(language: language)
+        let notificationTitle = kind.title(
+            modelDisplayName: task.identity.displayName,
+            language: language
+        )
         content.title = notificationTitle
         content.subtitle = task.projectDisplayName(language: language)
         let localizedStatus = task.displayStatusText(language: language)
         let statusText = localizedStatus.isEmpty ? notificationTitle : localizedStatus
         content.body = "\(task.title) · \(statusText)"
         content.categoryIdentifier = kind.categoryIdentifier
-        content.threadIdentifier = task.threadId
-        content.userInfo = TaskNotificationRoute(task: task).userInfo
+        let route = TaskNotificationRoute(task: task)
+        content.threadIdentifier = route.notificationThreadIdentifier
+        content.userInfo = route.userInfo
             .merging(["notificationKind": kind.rawValue]) { current, _ in current }
         content.sound = settings.notificationSoundEnabled ? .default : nil
 
         let timestamp = Int(task.updatedAt.timeIntervalSince1970 * 1_000)
         let request = UNNotificationRequest(
-            identifier: "llm-pulse.\(kind.rawValue).\(task.id).\(timestamp)",
+            identifier: "llm-pulse.\(task.profileID.rawValue).\(kind.rawValue).\(task.id).\(timestamp)",
             content: content,
             trigger: nil
         )
@@ -459,6 +547,23 @@ final class NotificationService {
             !settings.isProjectMuted($0.projectIdentityDirectory)
         }
         guard !visibleTasks.isEmpty else { return .suppressed }
+
+        let profileGroups = CompletionNotificationBatching.groupsByProfile(visibleTasks)
+        if profileGroups.count > 1 {
+            var deliveredAny = false
+            for group in profileGroups {
+                switch await postCompletionSummary(tasks: group) {
+                case .delivered:
+                    deliveredAny = true
+                case .suppressed:
+                    continue
+                case .retryable:
+                    return .retryable
+                }
+            }
+            return deliveredAny ? .delivered : .suppressed
+        }
+
         if visibleTasks.count == 1, let task = visibleTasks.first {
             return await post(task: task, kind: .completed)
         }
@@ -477,16 +582,20 @@ final class NotificationService {
         )
 
         let content = UNMutableNotificationContent()
+        let profileID = visibleTasks[0].profileID
         content.title = summary.title
         content.subtitle = summary.subtitle
         content.body = summary.body
         content.categoryIdentifier = PulseNotificationCategory.completionSummary
-        content.threadIdentifier = "llm-pulse.completed"
-        content.userInfo = ["notificationType": "completionSummary"]
+        content.threadIdentifier = "llm-pulse.completed.\(profileID.rawValue)"
+        content.userInfo = [
+            "notificationType": "completionSummary",
+            "profileID": profileID.rawValue,
+        ]
         content.sound = nil
 
         let request = UNNotificationRequest(
-            identifier: "llm-pulse.completed-summary.\(Int(Date.now.timeIntervalSince1970 * 1_000))",
+            identifier: "llm-pulse.completed-summary.\(profileID.rawValue).\(Int(Date.now.timeIntervalSince1970 * 1_000))",
             content: content,
             trigger: nil
         )
@@ -542,7 +651,7 @@ final class NotificationService {
     }
 
     func reconcilePendingSnoozes(
-        in snapshot: TaskSnapshot,
+        in hubSnapshot: PulseHubSnapshot,
         asOf date: Date = .now
     ) async {
         let requests = await NotificationCenterBridge.pendingRequests(in: center)
@@ -555,7 +664,7 @@ final class NotificationService {
         let identifiersToRemove = snoozedRequests.compactMap { request in
             SnoozeNotificationPolicy.shouldKeep(
                 userInfo: request.policyUserInfo,
-                snapshot: snapshot,
+                hubSnapshot: hubSnapshot,
                 settings: settings,
                 asOf: date
             )
@@ -594,7 +703,7 @@ final class NotificationService {
         let language = settings.appLanguage
         let openTask = UNNotificationAction(
             identifier: PulseNotificationAction.openTask,
-            title: PulseL10n.text("在 Codex 中打开", language: language),
+            title: PulseNotificationAction.openTaskTitle(language: language),
             options: [.foreground]
         )
         let openPanel = UNNotificationAction(
@@ -720,7 +829,7 @@ final class TaskNotificationObserver {
     private var quotaTracker: RateLimitNotificationTracker
     private var cancellable: AnyCancellable?
     private var deliveryTasks: [String: Task<Void, Never>] = [:]
-    private var pendingCompletionTasks: [String: PulseTask] = [:]
+    private var pendingCompletionTasks: [ModelProfileID: [String: PulseTask]] = [:]
     private var completionFlushTask: Task<Void, Never>?
     private var snoozeReconciliationTracker = SnoozeReconciliationTracker()
     private var quotaRetryNotBefore = Date.distantPast
@@ -772,11 +881,14 @@ final class TaskNotificationObserver {
         }
 
         let now = Date.now
-        if snoozeReconciliationTracker.shouldReconcile(snapshot: snapshot, asOf: now) {
+        if snoozeReconciliationTracker.shouldReconcile(
+            snapshot: hubSnapshot,
+            asOf: now
+        ) {
             Task { [weak self] in
                 guard let self else { return }
                 await notificationService.reconcilePendingSnoozes(
-                    in: monitor.snapshot,
+                    in: hubSnapshot,
                     asOf: .now
                 )
             }
@@ -799,7 +911,7 @@ final class TaskNotificationObserver {
         _ task: PulseTask,
         kind: PulseNotificationKind
     ) {
-        let key = "\(task.id)|\(kind.rawValue)"
+        let key = "\(task.profileID.rawValue)|\(task.id)|\(kind.rawValue)"
         guard deliveryTasks[key] == nil else { return }
 
         deliveryTasks[key] = Task { [weak self] in
@@ -847,7 +959,7 @@ final class TaskNotificationObserver {
 
     private func enqueueCompletionSummary(_ tasks: [PulseTask]) {
         for task in tasks {
-            pendingCompletionTasks[task.id] = task
+            pendingCompletionTasks[task.profileID, default: [:]][task.id] = task
         }
         completionFlushTask?.cancel()
         completionFlushTask = Task { [weak self] in
@@ -858,18 +970,22 @@ final class TaskNotificationObserver {
             }
             guard let self else { return }
 
-            let queuedTasks = pendingCompletionTasks.values.sorted {
-                $0.updatedAt < $1.updatedAt
+            let queuedTasks = pendingCompletionTasks.values.flatMap {
+                Array($0.values)
             }
             pendingCompletionTasks.removeAll()
             completionFlushTask = nil
-            enqueueCompletionDelivery(queuedTasks)
+            for group in CompletionNotificationBatching.groupsByProfile(queuedTasks) {
+                enqueueCompletionDelivery(group)
+            }
         }
     }
 
     private func enqueueCompletionDelivery(_ tasks: [PulseTask]) {
-        guard !tasks.isEmpty else { return }
-        let key = "completed|" + tasks.map(\.id).sorted().joined(separator: "|")
+        guard let profileID = tasks.first?.profileID,
+              tasks.allSatisfy({ $0.profileID == profileID }) else { return }
+        let key = "completed|\(profileID.rawValue)|"
+            + tasks.map(\.id).sorted().joined(separator: "|")
         guard deliveryTasks[key] == nil else { return }
 
         deliveryTasks[key] = Task { [weak self] in
@@ -880,11 +996,13 @@ final class TaskNotificationObserver {
     }
 
     private func deliverCompletionSummaryWithRetry(_ tasks: [PulseTask]) async {
+        guard let profileID = tasks.first?.profileID,
+              tasks.allSatisfy({ $0.profileID == profileID }) else { return }
         var retryIndex = 0
 
         while !Task.isCancelled {
             let taskIDs = Set(tasks.map(\.id))
-            let currentSnapshot = monitor.hubSnapshot.model(for: tasks[0].profileID)?
+            let currentSnapshot = monitor.hubSnapshot.model(for: profileID)?
                 .taskSnapshot ?? .empty
             let currentTasks = currentSnapshot.tasks.filter {
                 taskIDs.contains($0.id) && $0.state == .completed && $0.isUnread
@@ -923,11 +1041,35 @@ struct SnoozeReconciliationTracker {
     private(set) var lastReconciledAt = Date.distantPast
 
     mutating func shouldReconcile(
+        snapshot: PulseHubSnapshot,
+        asOf date: Date,
+        minimumInterval: TimeInterval = 30
+    ) -> Bool {
+        shouldReconcile(
+            refreshedAt: snapshot.refreshedAt,
+            asOf: date,
+            minimumInterval: minimumInterval
+        )
+    }
+
+    mutating func shouldReconcile(
         snapshot: TaskSnapshot,
         asOf date: Date,
         minimumInterval: TimeInterval = 30
     ) -> Bool {
-        guard snapshot.refreshedAt != .distantPast,
+        shouldReconcile(
+            refreshedAt: snapshot.refreshedAt,
+            asOf: date,
+            minimumInterval: minimumInterval
+        )
+    }
+
+    private mutating func shouldReconcile(
+        refreshedAt: Date,
+        asOf date: Date,
+        minimumInterval: TimeInterval
+    ) -> Bool {
+        guard refreshedAt != .distantPast,
               date.timeIntervalSince(lastReconciledAt) >= minimumInterval else {
             return false
         }

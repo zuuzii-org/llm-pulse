@@ -2,9 +2,9 @@
   <img src="Assets/Brand/LLMPulse-AppIcon-Rendered-512.png" width="128" height="128" alt="LLM Pulse app icon">
 </p>
 
-# LLM Pulse — Codex Task Monitor for macOS
+# LLM Pulse — Local Coding-Agent Task Monitor for macOS
 
-<p align="center"><strong>Codex tasks, always in sight.</strong></p>
+<p align="center"><strong>Local agent tasks, always in sight.</strong></p>
 
 <p align="center">
   <a href="README.md">English</a> ·
@@ -17,19 +17,21 @@
   <a href="LICENSE">MIT License</a>
 </p>
 
-**LLM Pulse is an open-source native macOS menu bar monitor for local Codex Desktop tasks.** It keeps running work, tasks waiting for approval or an answer, recent completions, active agent totals, token usage, and the Codex weekly usage limit visible without changing the underlying task records.
+**LLM Pulse is an open-source native macOS menu bar monitor for local coding-agent tasks.** The current source tree observes Codex Desktop, Claude Code, and root ZCode tasks whose current model is GLM. It keeps running work, approval and answer waits, active-agent totals, tokens, and available usage data visible without changing the underlying task records.
 
 The interface supports English and Simplified Chinese. Choose Follow System, 简体中文, or English in Settings; changes apply immediately without restarting.
+
+> ZCode / GLM support in v2.7.0 is a personal-machine adapter validated against ZCode 3.8.1's local data layout. It is not a general provider/API integration and degrades safely when the upstream format cannot be trusted.
 
 ## Product facts
 
 | | |
 |---|---|
-| **Product** | LLM Pulse 2.6.1 |
+| **Product** | LLM Pulse 2.7.0 |
 | **Developer** | Zuuzii |
 | **Platform** | macOS 14 or later; Apple Silicon and Intel |
-| **Category** | Local Codex task monitor and menu bar utility |
-| **Task scope** | Local root tasks created by Codex Desktop |
+| **Category** | Local coding-agent task monitor and menu bar utility |
+| **Task scope** | Codex Desktop roots, local Claude Code sessions, and ZCode roots currently using GLM |
 | **Data model** | Local, read-only adapters; no task analytics service |
 | **Network use** | GitHub Releases for optional update checks and downloads |
 | **License** | MIT |
@@ -37,20 +39,20 @@ The interface supports English and Simplified Chinese. Choose Follow System, 简
 
 ## Download
 
-[Download the latest signed and notarized DMG](https://github.com/zuuzii-org/llm-pulse/releases/latest). LLM Pulse 2.6.1 requires macOS 14 or later and ships as a Universal App for Apple Silicon and Intel Macs.
+[Download the latest signed and notarized DMG](https://github.com/zuuzii-org/llm-pulse/releases/latest). LLM Pulse 2.7.0 requires macOS 14 or later and ships as a Universal App for Apple Silicon and Intel Macs.
 
-The v2.6.1 release assets are:
+The v2.7.0 release assets are:
 
-- `LLM-Pulse-2.6.1.dmg`
-- `LLM-Pulse-2.6.1.dmg.sha256`
+- `LLM-Pulse-2.7.0.dmg`
+- `LLM-Pulse-2.7.0.dmg.sha256`
 
 Place both files in the same folder and verify the download with:
 
 ```bash
-shasum -a 256 -c LLM-Pulse-2.6.1.dmg.sha256
+shasum -a 256 -c LLM-Pulse-2.7.0.dmg.sha256
 ```
 
-Users on v1.0.0 must install v1.1.0 manually once because v1.0.0 did not include in-app updates. Users on v1.1–v1.3 should install and launch v1.4 before updating to v2.6.1.
+Users on v1.0.0 must install v1.1.0 manually once because v1.0.0 did not include in-app updates. Users on v1.1–v1.3 should install and launch v1.4 before updating to v2.7.0.
 
 ## What LLM Pulse shows
 
@@ -60,9 +62,9 @@ Users on v1.0.0 must install v1.1.0 manually once because v1.0.0 did not include
 - **Useful task context.** Each row shows the project, session, elapsed time, latest state, cumulative token use, and the active total for the main agent plus descendant agents.
 - **Exact Claude limits, optionally.** Claude Code knows its own reset times; the desktop app receives them and keeps only the percentages. Install the bundled `usage-bridge.sh` as your Claude Code status line and LLM Pulse shows the reported reset times instead of inferring them. LLM Pulse never edits `~/.claude/settings.json` — Settings hands you the snippet to paste.
 - **Codex weekly usage.** The usage card shows the remaining weekly percentage, an exact reset date and time in Beijing time (UTC+8), and data freshness.
-- **Direct task navigation.** Clicking a row opens the matching task through `codex://threads/<thread-id>`. A completion is marked viewed automatically only after the task opens successfully.
+- **Safe task opening.** Codex uses `codex://threads/<thread-id>`. Claude Code and ZCode have no verified session deep link, so LLM Pulse only activates the corresponding running app instead of guessing a URL.
 - **Native notifications.** Choose attention-only, important, or all recognizable states. Notifications support task actions, 15-minute or 1-hour snooze, quiet completion summaries, and weekly usage warnings.
-- **Two runtimes, one panel.** Codex Desktop tasks and Claude Code sessions are observed side by side. Swipe left or right with two fingers, or press Control+Left/Right, to switch model pages. Menu bar totals stay global across both.
+- **Three runtimes, one panel.** The current source observes Codex Desktop, Claude Code, and ZCode / GLM side by side. Swipe left or right with two fingers, or press Control+Left/Right, to switch model pages. Menu bar totals stay global across all three.
 - **Project controls.** Focus the panel on one Git project or mute that project’s notifications for an hour or until the next day. Menu bar totals remain global.
 - **macOS behavior.** Launch at login, multiple displays, reduced-motion support, configurable edge triggering in full-screen apps, and instant English/Simplified Chinese switching are built in.
 
@@ -70,21 +72,22 @@ The panel shows active work only — running tasks and tasks waiting on you. Com
 
 ## How it works
 
-LLM Pulse combines narrow local adapters instead of treating any private Codex format as permanent:
+LLM Pulse combines narrow local adapters instead of treating any private upstream format as permanent:
 
 1. The optional Codex plugin writes minimized lifecycle events for timely running and approval-waiting updates.
 2. Codex state SQLite databases are opened read-only with SQLite `query_only` enabled.
 3. Rollout JSONL is parsed for task state, timestamps, agent lifecycle, token summaries, and compatible usage snapshots.
 4. The bundled Codex App Server is queried locally with `account/rateLimits/read`; the current interface and notifications use the weekly window.
-5. Viewed receipts and LLM Pulse preferences stay under `~/Library/Application Support/LLM Pulse/`. Upgrade-only path aliases are isolated in centralized `LegacyCompatibility` definitions.
+5. The ZCode source opens `~/.zcode/cli/db/db.sqlite` in query-only mode and extracts only whitelisted state, permission, and subagent identifiers from event logs; it does not read messages, model I/O, or credentials.
+6. Viewed receipts and LLM Pulse preferences stay under `~/Library/Application Support/LLM Pulse/`. Upgrade-only path aliases are isolated in centralized `LegacyCompatibility` definitions.
 
-Only local root tasks created by Codex Desktop appear as rows. Descendant agents are rolled into the active `Agent N` total of their root task rather than displayed separately. See [the architecture notes](docs/ARCHITECTURE.md) for state precedence, retention, weekly-usage selection, and adapter failure behavior.
+Only roots validated by each source appear as rows; ZCode additionally requires the root's current selection to use GLM. Descendant agents are rolled into the active `Agent N` total of their root task rather than displayed separately. See [the architecture notes](docs/ARCHITECTURE.md) for state precedence, retention, usage semantics, and adapter failure behavior.
 
 ## Privacy and network access
 
 LLM Pulse is designed as a read-only observer:
 
-- It does not write to Codex databases, rollouts, task records, or App Server state.
+- It does not write to Codex, Claude Code, or ZCode databases, logs, transcripts, task records, or runtime state.
 - It does not extract, retain, or upload prompts, tool input, tool output, or transcript content.
 - The optional Codex journal keeps only `session_id`, `turn_id`, the event name, and a timestamp. It does not record project paths, prompts, messages, tool payloads, or responses.
 - Viewed receipts, notification settings, and weekly-warning deduplication keys stay on the Mac. Muted projects are stored as SHA-256 identifiers rather than plain-text paths.
@@ -169,7 +172,7 @@ Yes. Clicking a row opens the matching task through a local `codex://threads/<th
 
 ### Does LLM Pulse support Codex CLI, IDE tasks, cloud tasks, or other AI coding tools?
 
-LLM Pulse observes two runtimes: local root tasks created by Codex Desktop, and local Claude Code sessions. Swipe horizontally with two fingers, or press Control+Left/Right, to switch between them.
+The current source observes three runtimes: local root tasks created by Codex Desktop, local Claude Code sessions, and ZCode root tasks whose current selection uses GLM. Swipe horizontally with two fingers, or press Control+Left/Right, to switch between them.
 
 ### Is LLM Pulse an official OpenAI product?
 
@@ -181,6 +184,9 @@ No. LLM Pulse is an independent open-source project by Zuuzii and is not affilia
 - `codex://threads/<thread-id>` works with the Codex Desktop builds tested for this release but is not a documented stable contract.
 - Opening a task directly inside Codex Desktop cannot be detected reliably. Open it from LLM Pulse or acknowledge it manually to clear its unread state.
 - Codex hooks have no separate approval-resolved event. A task may remain in the approval-waiting state until the related tool emits `PostToolUse`.
+- ZCode's local schema and diagnostic events are also private compatibility surfaces. This personal adapter targets the layout verified on this Mac and fails closed when it drifts.
+- ZCode has no verified task/session deep link; a GLM row can only activate an already-running ZCode app.
+- ZCode does not persist a trustworthy account quota, reset time, or subscription expiry. GLM expiry must be entered manually in Settings.
 - Weekly usage data provides a percentage and reset time, not a reliable absolute token allowance.
 - App-generated interface text supports English and Simplified Chinese. User task titles, project paths, and raw Codex content remain unchanged.
 

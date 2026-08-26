@@ -56,6 +56,14 @@ final class TaskNavigator {
             // is everything that can be done correctly.
             return activateHandler(ClaudeDeepLink.desktopBundleIdentifier)
 
+        case .zcodeDesktop:
+            // ZCode registers a URL scheme, but the installed build only
+            // exposes OAuth/payment callbacks and workspace opening. There is
+            // no verified task or session route. Activating the app is the
+            // closest safe navigation and avoids inventing a URL that could
+            // create or mutate a session.
+            return activateHandler(ZCodeDeepLink.desktopBundleIdentifier)
+
         default:
             return false
         }
@@ -75,4 +83,8 @@ final class TaskNavigator {
         components.path = "/\(trimmedID)"
         return components.url
     }
+}
+
+enum ZCodeDeepLink {
+    static let desktopBundleIdentifier = "dev.zcode.app"
 }

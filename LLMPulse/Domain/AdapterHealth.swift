@@ -11,6 +11,8 @@ struct AdapterHealth: Identifiable, Codable, Equatable, Sendable {
         case claudeSessionRegistry
         case claudeTranscript
         case claudeAgentJournal
+        case zcodeSQLite
+        case zcodeEventLog
     }
 
     enum Status: Int, Codable, Comparable, Sendable {

@@ -5,6 +5,7 @@ struct AIRuntimeID: RawRepresentable, Hashable, Codable, Sendable {
     init(rawValue: String) { self.rawValue = rawValue }
     static let codexDesktop = AIRuntimeID(rawValue: "codex-desktop")
     static let claudeDesktop = AIRuntimeID(rawValue: "claude-desktop")
+    static let zcodeDesktop = AIRuntimeID(rawValue: "zcode-desktop")
 }
 
 struct AIProviderID: RawRepresentable, Hashable, Codable, Sendable {
@@ -12,6 +13,7 @@ struct AIProviderID: RawRepresentable, Hashable, Codable, Sendable {
     init(rawValue: String) { self.rawValue = rawValue }
     static let openAI = AIProviderID(rawValue: "openai")
     static let anthropic = AIProviderID(rawValue: "anthropic")
+    static let bigModel = AIProviderID(rawValue: "bigmodel")
 }
 
 struct ModelPlanKind: RawRepresentable, Hashable, Codable, Sendable {
@@ -52,6 +54,13 @@ struct ModelProfileID: RawRepresentable, Hashable, Codable, Sendable {
         modelID: "claude-code"
     )
 
+    static let glm = ModelProfileID(
+        runtime: .zcodeDesktop,
+        provider: .bigModel,
+        planKind: nil,
+        modelID: "glm"
+    )
+
     func isConsistent(
         runtime: AIRuntimeID,
         provider: AIProviderID,
@@ -72,6 +81,11 @@ struct ModelProfileID: RawRepresentable, Hashable, Codable, Sendable {
             return provider == .anthropic
                 && normalizedModelID == "claude-code"
                 && self == .claudeCode
+        }
+        if runtime == .zcodeDesktop {
+            return provider == .bigModel
+                && normalizedModelID == "glm"
+                && self == .glm
         }
         let components = rawValue.split(separator: ":", omittingEmptySubsequences: false)
         guard components.count == 3 else { return false }
@@ -130,6 +144,16 @@ struct ModelIdentity: Equatable, Codable, Sendable {
                 return nil
             }
         }
+        if runtime == .zcodeDesktop {
+            // ZCode can switch between concrete GLM versions inside one
+            // session. Keep one stable profile so task IDs and receipts do not
+            // change when the selected GLM release changes.
+            guard provider == .bigModel,
+                  normalizedModelID == "glm",
+                  planKind == nil else {
+                return nil
+            }
+        }
 
         self.runtime = runtime
         self.provider = provider
@@ -156,6 +180,13 @@ struct ModelIdentity: Equatable, Codable, Sendable {
         provider: .anthropic,
         modelID: "claude-code",
         displayName: "Claude Code"
+    )!
+
+    static let glm = ModelIdentity(
+        runtime: .zcodeDesktop,
+        provider: .bigModel,
+        modelID: "glm",
+        displayName: "GLM"
     )!
 
     static func isSafeIdentifier(_ value: String) -> Bool {

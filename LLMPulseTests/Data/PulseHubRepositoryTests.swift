@@ -141,6 +141,25 @@ final class PulseHubRepositoryTests: XCTestCase {
         XCTAssertEqual(task.sessionID, "session-42")
     }
 
+    func testGLMIdentityUsesStableZCodeProfile() throws {
+        let identity = ModelIdentity.glm
+
+        XCTAssertEqual(identity.profileID, .glm)
+        XCTAssertEqual(identity.profileID.rawValue, "zcode-desktop:bigmodel:glm")
+        XCTAssertEqual(identity.runtime, .zcodeDesktop)
+        XCTAssertEqual(identity.provider, .bigModel)
+        XCTAssertEqual(identity.modelID, "glm")
+        XCTAssertEqual(identity.displayName, "GLM")
+        XCTAssertTrue(identity.profileID.isConsistent(
+            runtime: .zcodeDesktop,
+            provider: .bigModel,
+            modelID: "glm"
+        ))
+
+        let encoded = try JSONEncoder().encode(identity)
+        XCTAssertEqual(try JSONDecoder().decode(ModelIdentity.self, from: encoded), identity)
+    }
+
     func testSecondaryRuntimeTaskIDsStayStableAcrossProfilesAndEncodeComponents() throws {
         let tokenPlan = try XCTUnwrap(ModelIdentity(
             runtime: AIRuntimeID(rawValue: "test-runtime"),
@@ -205,6 +224,18 @@ final class PulseHubRepositoryTests: XCTestCase {
             modelID: "gpt-5",
             displayName: "Codex",
             planKind: nil
+        ))
+        XCTAssertNil(ModelIdentity(
+            runtime: .zcodeDesktop,
+            provider: .anthropic,
+            modelID: "glm",
+            displayName: "GLM"
+        ))
+        XCTAssertNil(ModelIdentity(
+            runtime: .zcodeDesktop,
+            provider: .bigModel,
+            modelID: "glm-5.3",
+            displayName: "GLM"
         ))
     }
 

@@ -3,6 +3,38 @@ import XCTest
 @testable import LLMPulse
 
 final class PulseTaskPresentationTests: XCTestCase {
+    func testAdapterHealthUsesModelNeutralDriftCopyAndZCodeSourceNames() {
+        let drifted = AdapterHealth.degraded(
+            .zcodeEventLog,
+            message: "schema changed",
+            reason: .formatDrift
+        )
+
+        XCTAssertEqual(
+            drifted.displayMessage(language: .simplifiedChinese),
+            "上游数据格式可能已更新，部分任务无法识别"
+        )
+        XCTAssertEqual(
+            drifted.displayMessage(language: .english),
+            "The upstream data format may have changed; some tasks cannot be recognized"
+        )
+        XCTAssertFalse(drifted.displayMessage.contains("Codex"))
+        XCTAssertEqual(
+            AdapterHealth.unavailable(
+                .zcodeSQLite,
+                message: "missing"
+            ).displayMessage(language: .english),
+            "Unable to read the local ZCode task index"
+        )
+        XCTAssertEqual(
+            AdapterHealth.unavailable(
+                .zcodeEventLog,
+                message: "missing"
+            ).displayMessage(language: .simplifiedChinese),
+            "无法读取 ZCode 任务事件记录"
+        )
+    }
+
     func testProjectDisplayNameUsesNearestGitRoot() throws {
         let temporaryRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -160,4 +192,3 @@ final class PulseTaskPresentationTests: XCTestCase {
         )
     }
 }
-

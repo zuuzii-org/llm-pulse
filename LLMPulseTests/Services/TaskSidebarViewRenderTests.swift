@@ -124,6 +124,145 @@ final class TaskSidebarViewRenderTests: XCTestCase {
                 in: [.healthy(.pluginJournal)]
             )
         )
+        XCTAssertTrue(
+            TaskStatusSourceAvailability.hasHealthyAdapter(
+                in: [.healthy(.claudeSessionRegistry)]
+            )
+        )
+        XCTAssertTrue(
+            TaskStatusSourceAvailability.hasHealthyAdapter(
+                in: [.healthy(.claudeTranscript)]
+            )
+        )
+        XCTAssertTrue(
+            TaskStatusSourceAvailability.hasHealthyAdapter(
+                in: [.healthy(.zcodeSQLite)]
+            )
+        )
+        XCTAssertTrue(
+            TaskStatusSourceAvailability.hasHealthyAdapter(
+                in: [.healthy(.zcodeEventLog)]
+            )
+        )
+        XCTAssertFalse(
+            TaskStatusSourceAvailability.hasHealthyAdapter(
+                in: [.degraded(.zcodeEventLog, message: "stale")]
+            )
+        )
+    }
+
+    func testGLMUsesLocalUsageWithoutClaudePlanWindows() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let planWindow = try XCTUnwrap(PlanUsageWindow(
+            usedPercent: 25,
+            windowMinutes: 5 * 60,
+            resetsAt: now.addingTimeInterval(60 * 60),
+            resetSource: .reported
+        ))
+        let usage = ModelUsageSnapshot(
+            inputTokens: 1_200,
+            outputTokens: 300,
+            cacheCreationInputTokens: 0,
+            cacheReadInputTokens: 100,
+            observedRequestCount: 4,
+            observedAt: now,
+            fiveHourWindow: planWindow,
+            planUsageObservedAt: now
+        )
+
+        XCTAssertTrue(ModelUsageCardPresentation.showsPlanUsage(
+            identity: .claudeCode,
+            usage: usage
+        ))
+        XCTAssertFalse(ModelUsageCardPresentation.showsPlanUsage(
+            identity: .glm,
+            usage: usage
+        ))
+    }
+
+    func testThreeModelSwitcherRendersAtFourHundredPointsWithDistinctIcons() throws {
+        let suiteName = "TaskSidebarViewRenderTests.three-models.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let codexSnapshot = fixtureSnapshot(now: now)
+        let glmUsage = ModelUsageSnapshot(
+            inputTokens: 12_000,
+            outputTokens: 2_400,
+            cacheCreationInputTokens: 0,
+            cacheReadInputTokens: 4_000,
+            observedRequestCount: 8,
+            observedAt: now
+        )
+        let hubSnapshot = PulseHubSnapshot(
+            models: [
+                ModelTaskSnapshot(codex: codexSnapshot),
+                ModelTaskSnapshot(
+                    identity: .claudeCode,
+                    tasks: [],
+                    health: [
+                        .healthy(.claudeSessionRegistry, at: now),
+                        .healthy(.claudeTranscript, at: now),
+                    ],
+                    refreshedAt: now
+                ),
+                ModelTaskSnapshot(
+                    identity: .glm,
+                    tasks: [task(
+                        id: "glm-waiting",
+                        title: "等待 GLM 工具调用确认",
+                        project: "/tmp/glm",
+                        state: .waitingForApproval,
+                        updatedAt: now,
+                        identity: .glm,
+                        tokenTotal: 14_400,
+                        agentCount: 2,
+                        agentConfidence: .exact
+                    )],
+                    usage: glmUsage,
+                    membership: MembershipObservation(tierDisplayName: "Coding Plan"),
+                    health: [
+                        .healthy(.zcodeSQLite, at: now),
+                        .healthy(.zcodeEventLog, at: now),
+                    ],
+                    refreshedAt: now
+                ),
+            ],
+            refreshedAt: now
+        )
+        let settings = PulseSettings(defaults: defaults)
+        let selection = ModelSelectionStore(
+            defaults: defaults,
+            preferenceKey: "threeModelSelection"
+        )
+        selection.reconcile(with: hubSnapshot)
+        XCTAssertTrue(selection.select(.glm))
+
+        let (hostingView, window) = makeHostedSidebar(
+            snapshot: hubSnapshot,
+            settings: settings,
+            modelSelection: selection
+        )
+        defer { tearDownHostedSidebar(hostingView, window: window) }
+        settle(hostingView, in: window)
+        let bitmap = try renderBitmap(of: hostingView)
+
+        XCTAssertGreaterThanOrEqual(bitmap.pixelsWide, 400)
+        XCTAssertGreaterThanOrEqual(bitmap.pixelsHigh, 900)
+        assertPaintedPanel(in: bitmap)
+
+        let pngData = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+        let outputPath = ProcessInfo.processInfo.environment["LLM_PULSE_GLM_RENDER_QA_PATH"]
+            ?? "/tmp/llm-pulse-glm-fixture.png"
+        try pngData.write(to: URL(fileURLWithPath: outputPath), options: .atomic)
+
+        let iconNames = [
+            ModelTabPresentation.systemImageName(for: .codex),
+            ModelTabPresentation.systemImageName(for: .claudeCode),
+            ModelTabPresentation.systemImageName(for: .glm),
+        ]
+        XCTAssertEqual(Set(iconNames).count, 3)
     }
 
     func testRunningSectionCollapsesInRenderedPanel() throws {
@@ -226,6 +365,28 @@ final class TaskSidebarViewRenderTests: XCTestCase {
         let view = TaskSidebarView(
             monitor: monitor,
             settings: settings,
+            onOpenTask: { _ in true },
+            onDismiss: {},
+            onOpenSettings: {}
+        )
+        let hostingView = NSHostingView(rootView: view)
+        hostingView.frame = CGRect(x: 0, y: 0, width: 400, height: 900)
+        return (hostingView, makeWindow(hosting: hostingView))
+    }
+
+    private func makeHostedSidebar(
+        snapshot: PulseHubSnapshot,
+        settings: PulseSettings,
+        modelSelection: ModelSelectionStore
+    ) -> (NSHostingView<TaskSidebarView>, NSWindow) {
+        let monitor = TaskMonitor(
+            hubRepository: RenderHubRepository(snapshot: snapshot),
+            initialHubSnapshot: snapshot
+        )
+        let view = TaskSidebarView(
+            monitor: monitor,
+            settings: settings,
+            modelSelection: modelSelection,
             onOpenTask: { _ in true },
             onDismiss: {},
             onOpenSettings: {}
@@ -389,6 +550,7 @@ final class TaskSidebarViewRenderTests: XCTestCase {
         state: PulseTaskState,
         updatedAt: Date,
         isUnread: Bool = false,
+        identity: ModelIdentity = .codex,
         tokenTotal: Int,
         agentCount: Int? = nil,
         agentConfidence: AgentActivityObservation.Confidence? = nil
@@ -396,6 +558,7 @@ final class TaskSidebarViewRenderTests: XCTestCase {
         PulseTask(
             threadId: id,
             turnId: "turn-\(id)",
+            identity: identity,
             title: title,
             projectDirectory: project,
             state: state,
@@ -440,5 +603,20 @@ private actor RenderTaskRepository: TaskRepositoryProtocol {
     func markViewed(_ task: PulseTask, at date: Date) async throws {}
     func markViewed(_ tasks: [PulseTask], at date: Date) async throws {}
     func unmarkViewed(_ task: PulseTask) async throws {}
+    func unmarkViewed(_ tasks: [PulseTask]) async throws {}
+}
+
+private actor RenderHubRepository: PulseHubRepositoryProtocol {
+    let snapshotValue: PulseHubSnapshot
+
+    init(snapshot: PulseHubSnapshot) {
+        snapshotValue = snapshot
+    }
+
+    func snapshot(now: Date) async -> PulseHubSnapshot {
+        snapshotValue
+    }
+
+    func markViewed(_ tasks: [PulseTask], at date: Date) async throws {}
     func unmarkViewed(_ tasks: [PulseTask]) async throws {}
 }

@@ -73,6 +73,43 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertEqual(decoded, route)
     }
 
+    func testNotificationThreadIdentifiersAreNamespacedByProfileAndSession() {
+        let codex = TaskNotificationRoute(
+            taskID: "shared-task",
+            threadID: "shared-thread",
+            profileID: .codex,
+            sessionID: "shared-session"
+        )
+        let claude = TaskNotificationRoute(
+            taskID: "shared-task",
+            threadID: "shared-thread",
+            profileID: .claudeCode,
+            sessionID: "shared-session"
+        )
+        let glm = TaskNotificationRoute(
+            taskID: "shared-task",
+            threadID: "shared-thread",
+            profileID: .glm,
+            sessionID: "shared-session"
+        )
+        let nextCodexTurn = TaskNotificationRoute(
+            taskID: "another-task",
+            threadID: "shared-thread",
+            profileID: .codex,
+            sessionID: "shared-session"
+        )
+
+        XCTAssertEqual(codex.notificationThreadIdentifier, nextCodexTurn.notificationThreadIdentifier)
+        XCTAssertEqual(
+            Set([
+                codex.notificationThreadIdentifier,
+                claude.notificationThreadIdentifier,
+                glm.notificationThreadIdentifier,
+            ]).count,
+            3
+        )
+    }
+
     func testNotificationRouteRejectsIncompletePayload() {
         XCTAssertNil(TaskNotificationRoute(userInfo: ["threadID": "thread-1"]))
         XCTAssertNil(TaskNotificationRoute(userInfo: ["taskID": "task-1"]))
@@ -180,6 +217,40 @@ final class NotificationServiceTests: XCTestCase {
         )
     }
 
+    func testTaskSnapshotReliabilityCoversEveryAuthoritativeRuntimeSource() {
+        let now = Date(timeIntervalSince1970: 200)
+
+        for adapter in [
+            AdapterHealth.Adapter.rolloutJSONL,
+            .claudeSessionRegistry,
+            .claudeTranscript,
+            .zcodeSQLite,
+            .zcodeEventLog,
+            .runtimeSource,
+        ] {
+            XCTAssertTrue(
+                TaskNotificationSnapshotReliability.mayBeIncomplete(
+                    TaskSnapshot(
+                        tasks: [],
+                        refreshedAt: now,
+                        health: [.degraded(adapter, message: "partial")]
+                    )
+                ),
+                "Expected \(adapter.rawValue) degradation to preserve notification state"
+            )
+        }
+
+        XCTAssertFalse(
+            TaskNotificationSnapshotReliability.mayBeIncomplete(
+                TaskSnapshot(
+                    tasks: [],
+                    refreshedAt: now,
+                    health: [.unavailable(.receipts, message: "unrelated")]
+                )
+            )
+        )
+    }
+
     func testAttentionLevelsKeepDefaultNotificationsLowNoise() {
         XCTAssertTrue(NotificationAttentionLevel.attentionOnly.allows(.waitingForApproval))
         XCTAssertTrue(NotificationAttentionLevel.attentionOnly.allows(.waitingForAnswer))
@@ -209,6 +280,38 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertFalse(PulseNotificationAction.markViewed.isEmpty)
         XCTAssertFalse(PulseNotificationAction.snooze15Minutes.isEmpty)
         XCTAssertFalse(PulseNotificationAction.snoozeOneHour.isEmpty)
+    }
+
+    func testTaskNotificationTitlesAndOpenActionAreModelAgnostic() {
+        XCTAssertEqual(
+            PulseNotificationKind.waitingForApproval.title(
+                modelDisplayName: "Codex",
+                language: .simplifiedChinese
+            ),
+            "Codex · 等待授权"
+        )
+        XCTAssertEqual(
+            PulseNotificationKind.waitingForAnswer.title(
+                modelDisplayName: "Claude Code",
+                language: .english
+            ),
+            "Claude Code · Waiting for Your Answer"
+        )
+        XCTAssertEqual(
+            PulseNotificationKind.completed.title(
+                modelDisplayName: "GLM",
+                language: .simplifiedChinese
+            ),
+            "GLM · 任务已完成"
+        )
+        XCTAssertEqual(
+            PulseNotificationAction.openTaskTitle(language: .simplifiedChinese),
+            "打开任务"
+        )
+        XCTAssertEqual(
+            PulseNotificationAction.openTaskTitle(language: .english),
+            "Open Task"
+        )
     }
 
     func testNotificationRetryBackoffSaturatesInsteadOfGivingUp() {
@@ -249,7 +352,7 @@ final class NotificationServiceTests: XCTestCase {
         var tracker = SnoozeReconciliationTracker()
         let now = Date(timeIntervalSince1970: 200)
 
-        XCTAssertFalse(tracker.shouldReconcile(snapshot: .empty, asOf: now))
+        XCTAssertFalse(tracker.shouldReconcile(snapshot: TaskSnapshot.empty, asOf: now))
         XCTAssertEqual(tracker.lastReconciledAt, .distantPast)
 
         let realSnapshot = TaskSnapshot(tasks: [], refreshedAt: now, health: [])
@@ -266,6 +369,25 @@ final class NotificationServiceTests: XCTestCase {
                 asOf: now.addingTimeInterval(30)
             )
         )
+    }
+
+    func testSnoozeReconciliationUsesHubRefreshInsteadOfCodexProjection() {
+        var tracker = SnoozeReconciliationTracker()
+        let now = Date(timeIntervalSince1970: 200)
+        let glmOnlyHub = PulseHubSnapshot(
+            models: [
+                ModelTaskSnapshot(
+                    identity: .glm,
+                    tasks: [],
+                    health: [.healthy(.zcodeEventLog, at: now)],
+                    refreshedAt: now
+                ),
+            ],
+            refreshedAt: now
+        )
+
+        XCTAssertFalse(tracker.shouldReconcile(snapshot: PulseHubSnapshot.empty, asOf: now))
+        XCTAssertTrue(tracker.shouldReconcile(snapshot: glmOnlyHub, asOf: now))
     }
 
     @MainActor
@@ -362,6 +484,110 @@ final class NotificationServiceTests: XCTestCase {
                 ),
                 settings: settings,
                 asOf: now.addingTimeInterval(2)
+            )
+        )
+    }
+
+    @MainActor
+    func testSnoozedGLMTaskReconcilesAgainstItsOwnProfileSnapshot() {
+        let suiteName = "NotificationServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settings = PulseSettings(defaults: defaults)
+        settings.notificationAttentionLevel = .all
+        let now = Date(timeIntervalSince1970: 200)
+        let waitingGLMTask = makeTask(
+            state: .waitingForAnswer,
+            id: "shared-thread",
+            identity: .glm,
+            sessionID: "glm-session"
+        )
+        var userInfo: [AnyHashable: Any] = TaskNotificationRoute(task: waitingGLMTask).userInfo
+        userInfo["notificationKind"] = PulseNotificationKind.waitingForAnswer.rawValue
+
+        let healthyGLMHub = PulseHubSnapshot(
+            models: [
+                ModelTaskSnapshot(
+                    identity: .codex,
+                    tasks: [],
+                    health: [.healthy(.rolloutJSONL, at: now)],
+                    refreshedAt: now
+                ),
+                ModelTaskSnapshot(
+                    identity: .glm,
+                    tasks: [waitingGLMTask],
+                    health: [.healthy(.zcodeEventLog, at: now)],
+                    refreshedAt: now
+                ),
+            ],
+            refreshedAt: now
+        )
+
+        XCTAssertTrue(
+            SnoozeNotificationPolicy.shouldKeep(
+                userInfo: userInfo,
+                hubSnapshot: healthyGLMHub,
+                settings: settings,
+                asOf: now
+            )
+        )
+
+        let degradedGLMHub = PulseHubSnapshot(
+            models: [
+                ModelTaskSnapshot(
+                    identity: .codex,
+                    tasks: [],
+                    health: [.healthy(.rolloutJSONL, at: now)],
+                    refreshedAt: now
+                ),
+                ModelTaskSnapshot(
+                    identity: .glm,
+                    tasks: [],
+                    health: [.degraded(.zcodeEventLog, message: "partial")],
+                    refreshedAt: now
+                ),
+            ],
+            refreshedAt: now
+        )
+        XCTAssertTrue(
+            SnoozeNotificationPolicy.shouldKeep(
+                userInfo: userInfo,
+                hubSnapshot: degradedGLMHub,
+                settings: settings,
+                asOf: now
+            )
+        )
+
+        let completedGLMTask = makeTask(
+            state: .completed,
+            id: "shared-thread",
+            identity: .glm,
+            sessionID: "glm-session"
+        )
+        let completedGLMHub = PulseHubSnapshot(
+            models: [
+                ModelTaskSnapshot(
+                    identity: .codex,
+                    tasks: [],
+                    health: [.healthy(.rolloutJSONL, at: now)],
+                    refreshedAt: now
+                ),
+                ModelTaskSnapshot(
+                    identity: .glm,
+                    tasks: [completedGLMTask],
+                    health: [.healthy(.zcodeEventLog, at: now)],
+                    refreshedAt: now
+                ),
+            ],
+            refreshedAt: now
+        )
+
+        XCTAssertFalse(
+            SnoozeNotificationPolicy.shouldKeep(
+                userInfo: userInfo,
+                hubSnapshot: completedGLMHub,
+                settings: settings,
+                asOf: now
             )
         )
     }
@@ -548,10 +774,31 @@ final class NotificationServiceTests: XCTestCase {
 
         let summary = CompletionNotificationSummary(tasks: tasks)
 
-        XCTAssertEqual(summary.title, "2 个任务已完成")
+        XCTAssertEqual(summary.title, "Codex · 2 个任务已完成")
         XCTAssertEqual(summary.subtitle, "来自 2 个项目")
         XCTAssertTrue(summary.body.contains("alpha · 完成一"))
         XCTAssertTrue(summary.body.contains("beta · 完成二"))
+    }
+
+    func testCompletionBatchingNeverCombinesDifferentProfiles() {
+        let tasks = [
+            makeTask(state: .completed, id: "shared", identity: .codex),
+            makeTask(state: .completed, id: "shared", identity: .claudeCode),
+            makeTask(state: .completed, id: "shared", identity: .glm),
+            makeTask(state: .completed, id: "codex-second", identity: .codex),
+        ]
+
+        let groups = CompletionNotificationBatching.groupsByProfile(tasks)
+
+        XCTAssertEqual(groups.count, 3)
+        XCTAssertEqual(groups.flatMap { $0 }.count, tasks.count)
+        XCTAssertTrue(groups.allSatisfy { group in
+            Set(group.map(\.profileID)).count == 1
+        })
+        XCTAssertEqual(
+            groups.first(where: { $0.first?.profileID == .codex })?.count,
+            2
+        )
     }
 
     func testQuotaAlertsProgressThroughThresholdsAndPersistPerResetWindow() throws {
@@ -816,11 +1063,15 @@ final class NotificationServiceTests: XCTestCase {
         state: PulseTaskState,
         id: String = "thread-1",
         title: String = "测试任务",
-        projectDirectory: String = "/tmp/project"
+        projectDirectory: String = "/tmp/project",
+        identity: ModelIdentity = .codex,
+        sessionID: String? = nil
     ) -> PulseTask {
         PulseTask(
             threadId: id,
             turnId: "turn-1",
+            identity: identity,
+            sessionID: sessionID,
             title: title,
             projectDirectory: projectDirectory,
             state: state,

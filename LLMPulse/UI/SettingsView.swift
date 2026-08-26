@@ -4,6 +4,14 @@ import ServiceManagement
 import SwiftUI
 import UserNotifications
 
+enum SettingsMembershipPresentation {
+    static let profiles: [ModelIdentity] = [
+        .codex,
+        .claudeCode,
+        .glm,
+    ]
+}
+
 struct SettingsView: View {
     @ObservedObject var settings: PulseSettings
     @ObservedObject var launchAtLogin: LaunchAtLoginService
@@ -102,18 +110,16 @@ struct SettingsView: View {
             }
 
             Section {
-                membershipOverrideControls(
-                    title: "Codex",
-                    profileID: .codex
-                )
-                membershipOverrideControls(
-                    title: "Claude Code",
-                    profileID: ModelIdentity.claudeCode.profileID
-                )
+                ForEach(SettingsMembershipPresentation.profiles, id: \.profileID) { identity in
+                    membershipOverrideControls(
+                        title: identity.displayName,
+                        profileID: identity.profileID
+                    )
+                }
             } header: {
                 Text("会员")
             } footer: {
-                Text("填写后覆盖自动推导的续费日；留空则按订阅起始日按月推算。")
+                Text("填写后覆盖自动推导的续费日；读取到订阅起始日时会按月推算，GLM 到期日需手动填写。")
             }
 
             Section {
@@ -170,7 +176,10 @@ struct SettingsView: View {
             } header: {
                 Text("隐私")
             } footer: {
-                Text("V1 只读取本机 Codex 桌面版任务数据。LLM Pulse 仅写入自己的未查看状态与偏好设置，不修改 Codex 任务记录。")
+                Text(PulseL10n.text(
+                    "LLM Pulse 只读取本机任务和使用数据，仅写入自己的未查看状态与偏好设置，不修改被监控工具的任务记录。",
+                    language: settings.appLanguage
+                ))
             }
         }
         .formStyle(.grouped)

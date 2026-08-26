@@ -193,7 +193,7 @@ extension AdapterHealth {
     func displayMessage(language: AppLanguage) -> String {
         if reason == .formatDrift {
             return PulseL10n.text(
-                "Codex 数据格式可能已更新，部分任务无法识别",
+                "上游数据格式可能已更新，部分任务无法识别",
                 language: language
             )
         }
@@ -222,6 +222,10 @@ extension AdapterHealth {
             return PulseL10n.text("无法读取 Claude Code 任务记录", language: language)
         case .claudeAgentJournal:
             return PulseL10n.text("Claude Code 子 Agent 记录尚未生成", language: language)
+        case .zcodeSQLite:
+            return PulseL10n.text("无法读取 ZCode 本地任务索引", language: language)
+        case .zcodeEventLog:
+            return PulseL10n.text("无法读取 ZCode 任务事件记录", language: language)
         }
     }
 }

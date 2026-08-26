@@ -3,6 +3,31 @@ import XCTest
 
 @MainActor
 final class PulseSettingsTests: XCTestCase {
+    func testMembershipSettingsExposeCodexClaudeCodeAndGLM() {
+        XCTAssertEqual(
+            SettingsMembershipPresentation.profiles.map(\.profileID),
+            [.codex, .claudeCode, .glm]
+        )
+        XCTAssertEqual(
+            SettingsMembershipPresentation.profiles.map(\.displayName),
+            ["Codex", "Claude Code", "GLM"]
+        )
+    }
+
+    func testPersistsGLMMembershipExpiryOverride() {
+        let suiteName = "PulseSettingsTests.glm-membership.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let expiry = Date(timeIntervalSince1970: 1_900_000_000)
+        PulseSettings(defaults: defaults).setMembershipExpiryOverride(expiry, for: .glm)
+
+        XCTAssertEqual(
+            PulseSettings(defaults: defaults).membershipExpiryOverride(for: .glm),
+            expiry
+        )
+    }
+
     func testUsesProductDefaultsForNewInstall() {
         let suiteName = "PulseSettingsTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -261,4 +286,3 @@ final class PulseSettingsTests: XCTestCase {
         XCTAssertFalse(persistedKeys.contains(subdirectory.path))
     }
 }
-

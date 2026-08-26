@@ -14,6 +14,30 @@ enum ModelPageAccessibility {
     }
 }
 
+enum ModelTabPresentation {
+    static func systemImageName(for profileID: ModelProfileID) -> String {
+        switch profileID {
+        case .codex:
+            return "terminal"
+        case .claudeCode:
+            return "sparkles"
+        case .glm:
+            return "brain.head.profile"
+        default:
+            return "cpu"
+        }
+    }
+}
+
+enum ModelUsageCardPresentation {
+    static func showsPlanUsage(
+        identity: ModelIdentity,
+        usage: ModelUsageSnapshot?
+    ) -> Bool {
+        identity.profileID == .claudeCode && usage?.hasPlanUsage == true
+    }
+}
+
 struct TaskSidebarView: View {
     @ObservedObject var monitor: TaskMonitor
     @ObservedObject var settings: PulseSettings
@@ -65,6 +89,10 @@ struct TaskSidebarView: View {
             return model
         }
         return hubSnapshot.model(for: .codex) ?? hubSnapshot.models.first
+    }
+
+    private var selectedModelDisplayName: String {
+        selectedModel?.identity.displayName ?? "AI"
     }
 
     private var snapshot: TaskSnapshot {
@@ -332,7 +360,7 @@ struct TaskSidebarView: View {
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .help("立即刷新")
-            .accessibilityLabel("刷新任务和额度")
+            .accessibilityLabel("刷新任务和使用数据")
 
             Button(action: onDismiss) {
                 Image(systemName: "xmark")
@@ -386,19 +414,20 @@ struct TaskSidebarView: View {
                     _ = modelSelection.select(model.identity.profileID)
                 } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: model.identity.profileID == .codex
-                            ? "terminal"
-                            : "cpu")
+                        Image(systemName: ModelTabPresentation.systemImageName(
+                            for: model.identity.profileID
+                        ))
                             .accessibilityHidden(true)
                         Text(model.identity.displayName)
                             .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                     }
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(
                         isSelected ? TaskSidebarPalette.selectedModelInk : Color.secondary
                     )
-                    .padding(.horizontal, 9)
-                    .frame(height: 28)
+                    .padding(.horizontal, 7)
+                    .frame(maxWidth: .infinity, minHeight: 28, maxHeight: 28)
                     .background(
                         isSelected
                             ? TaskSidebarPalette.selectedModelInk.opacity(0.15)
@@ -407,6 +436,7 @@ struct TaskSidebarView: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
                 .disabled(modelSelection.isSelectionLocked)
                 .accessibilityLabel(PulseL10n.text(
                     "%@ 模型标签，第 %d 个，共 %d 个",
@@ -417,7 +447,6 @@ struct TaskSidebarView: View {
                 ))
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
-            Spacer(minLength: 0)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 7)
@@ -610,14 +639,25 @@ struct TaskSidebarView: View {
         VStack(spacing: 14) {
             ProgressView()
                 .controlSize(.small)
-            Text("正在读取 Codex 任务…")
+            Text(PulseL10n.text(
+                "正在读取 %@ 任务…",
+                language: settings.appLanguage,
+                selectedModelDisplayName
+            ))
                 .font(.subheadline.weight(.medium))
-            Text("任务和额度数据只从本机读取")
+            Text(PulseL10n.text(
+                "任务和使用数据只从本机读取",
+                language: settings.appLanguage
+            ))
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("正在读取 Codex 桌面版任务和额度")
+        .accessibilityLabel(PulseL10n.text(
+            "正在读取 %@ 的本机任务和使用数据",
+            language: settings.appLanguage,
+            selectedModelDisplayName
+        ))
     }
 
     private var emptyState: some View {
@@ -689,8 +729,9 @@ struct TaskSidebarView: View {
         }
         return messages.isEmpty
             ? PulseL10n.text(
-                "Codex 数据源没有响应，请稍后重试。",
-                language: settings.appLanguage
+                "%@ 数据源没有响应，请稍后重试。",
+                language: settings.appLanguage,
+                selectedModelDisplayName
             )
             : messages.joined(separator: " · ")
     }
@@ -847,7 +888,7 @@ struct TaskSidebarView: View {
             openErrorMessage = nil
         } else {
             openErrorMessage = PulseL10n.text(
-                "无法在 Codex 中打开“%@”。请确认 Codex 桌面版已安装并可用。",
+                "无法打开“%@”。请确认对应应用已安装；Claude Code 和 ZCode 还需保持运行。",
                 language: settings.appLanguage,
                 task.title
             )
@@ -1004,7 +1045,10 @@ private struct ModelUsageCard: View {
                 }
             }
 
-            if let usage, usage.hasPlanUsage {
+            if ModelUsageCardPresentation.showsPlanUsage(
+                identity: identity,
+                usage: usage
+            ), let usage {
                 Divider().opacity(0.32)
                 planUsage(usage)
             } else if membershipDisplay != nil {
@@ -1013,7 +1057,10 @@ private struct ModelUsageCard: View {
             if let membershipDisplay {
                 MembershipRowView(display: membershipDisplay, now: .now)
             }
-            if let usage, usage.hasPlanUsage {
+            if ModelUsageCardPresentation.showsPlanUsage(
+                identity: identity,
+                usage: usage
+            ), let usage {
                 Text(planUsageFootnote(usage))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -1447,8 +1494,22 @@ private struct QuotaWindowRow: View {
 enum TaskStatusSourceAvailability {
     static func hasHealthyAdapter(in health: [AdapterHealth]) -> Bool {
         health.contains {
-            ($0.adapter == .rolloutJSONL || $0.adapter == .pluginJournal)
-                && $0.status == .healthy
+            guard $0.status == .healthy else { return false }
+            switch $0.adapter {
+            case .rolloutJSONL,
+                 .pluginJournal,
+                 .claudeSessionRegistry,
+                 .claudeTranscript,
+                 .zcodeSQLite,
+                 .zcodeEventLog:
+                return true
+            case .appServer,
+                 .sqlite,
+                 .receipts,
+                 .runtimeSource,
+                 .claudeAgentJournal:
+                return false
+            }
         }
     }
 }
@@ -1603,7 +1664,10 @@ private struct TaskListItem: View {
                         ? PulseL10n.text("，此项目通知已静音", language: language)
                         : "")
                 )
-                .accessibilityHint("打开 Codex 并定位到此任务")
+                .accessibilityHint(PulseL10n.text(
+                    "打开对应应用；支持时定位到此任务",
+                    language: language
+                ))
 
                 if canExpand {
                     Button(action: onToggleExpanded) {

@@ -47,11 +47,13 @@ final class TaskMonitor: ObservableObject {
     static func makeLive(
         refreshInterval: Duration = .milliseconds(750),
         codexPaths: CodexPaths = .live(),
-        claudePaths: ClaudePaths = .live()
+        claudePaths: ClaudePaths = .live(),
+        zcodePaths: ZCodePaths = .live()
     ) -> TaskMonitor {
         let taskRepository = TaskRepository.live(paths: codexPaths)
         let codexRepository = CodexSourceRepository(repository: taskRepository)
         let claudeRepository = ClaudeSourceRepository(paths: claudePaths)
+        let zcodeRepository = ZCodeSourceRepository(paths: zcodePaths)
         return TaskMonitor(
             hubRepository: PulseHubRepository(
                 // Each source has its own timeout, so one runtime being slow
@@ -59,6 +61,7 @@ final class TaskMonitor: ObservableObject {
                 sources: [
                     SingleModelSourceAdapter(repository: codexRepository),
                     SingleModelSourceAdapter(repository: claudeRepository),
+                    SingleModelSourceAdapter(repository: zcodeRepository),
                 ],
                 receiptRepository: taskRepository,
                 sourceRefreshTimeout: .seconds(2),

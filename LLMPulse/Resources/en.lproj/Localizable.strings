@@ -35,6 +35,7 @@
 "打开系统设置" = "Open System Settings";
 "隐私" = "Privacy";
 "V1 只读取本机 Codex 桌面版任务数据。LLM Pulse 仅写入自己的未查看状态与偏好设置，不修改 Codex 任务记录。" = "V1 reads only local Codex Desktop task data. LLM Pulse writes only its own unread state and preferences, and never modifies Codex task records.";
+"LLM Pulse 只读取本机任务和使用数据，仅写入自己的未查看状态与偏好设置，不修改被监控工具的任务记录。" = "LLM Pulse reads only local task and usage data, writes only its own unread state and preferences, and never modifies task records from monitored tools.";
 "LLM Pulse 设置" = "LLM Pulse Settings";
 
 "打开下一条需处理任务" = "Open Next Action-Required Task";
@@ -49,7 +50,7 @@
 
 "处理下一条等待授权或回答的任务" = "Open the next task waiting for approval or an answer";
 "需要你处理 %d 个任务，打开下一条" = "%d tasks need your attention. Open the next one.";
-"刷新任务和额度" = "Refresh tasks and usage limits";
+"刷新任务和使用数据" = "Refresh tasks and usage data";
 "关闭侧边栏" = "Close sidebar";
 "全部项目" = "All Projects";
 "按项目筛选" = "Filter by project";
@@ -112,6 +113,7 @@
 "操作后可在短时间内撤销" = "You can undo this action for a short time";
 "，此项目通知已静音" = ", notifications for this project are muted";
 "打开 Codex 并定位到此任务" = "Open Codex and navigate to this task";
+"打开对应应用；支持时定位到此任务" = "Open the corresponding app and navigate to this task when supported";
 "收起 token 明细" = "Collapse token details";
 "展开 token 明细" = "Expand token details";
 "标记为已查看" = "Mark as Viewed";
@@ -153,9 +155,12 @@
 "插件事件日志尚未生成，当前使用兼容数据源" = "The plugin event journal is not available yet; using a compatible data source";
 "未查看状态暂时无法保存" = "Unread state cannot be saved right now";
 "Codex 数据格式可能已更新，部分任务无法识别" = "The Codex data format may have changed; some tasks cannot be recognized";
+"上游数据格式可能已更新，部分任务无法识别" = "The upstream data format may have changed; some tasks cannot be recognized";
 "无法读取 Claude Code 会话列表" = "Unable to read the Claude Code session list";
 "无法读取 Claude Code 任务记录" = "Unable to read Claude Code task records";
 "Claude Code 子 Agent 记录尚未生成" = "Claude Code has not written any subagent records yet";
+"无法读取 ZCode 本地任务索引" = "Unable to read the local ZCode task index";
+"无法读取 ZCode 任务事件记录" = "Unable to read ZCode task event records";
 "5 小时窗口" = "5-hour window";
 "7 天窗口" = "7-day window";
 "已用 %d%%" = "%d%% used";
@@ -188,7 +193,7 @@
 "手动指定 %@ 到期日" = "Set the %@ expiry date manually";
 "到期日" = "Expiry Date";
 "待处理 %d · 运行 %d" = "%d waiting · %d running";
-"填写后覆盖自动推导的续费日；留空则按订阅起始日按月推算。" = "A date entered here is shown exactly, replacing the derived renewal; leave it off to project monthly from the subscription start.";
+"填写后覆盖自动推导的续费日；读取到订阅起始日时会按月推算，GLM 到期日需手动填写。" = "A date entered here is shown exactly, replacing any derived renewal. Monthly projection is used only when a subscription start is available; GLM expiry must be entered manually.";
 "模型数据源暂不可用" = "The model data source is temporarily unavailable";
 "模型数据源刷新超时或返回了无效身份" = "The model data source timed out or returned an invalid identity";
 "刚刚" = "just now";
@@ -273,7 +278,7 @@
 "激活运行此任务的终端；无法确认时在 Finder 中显示项目" = "Activate the terminal running this task; reveal the project in Finder if the session cannot be verified";
 "已激活运行该任务的终端；出于安全考虑，LLM Pulse 不会自动执行恢复命令。" = "The terminal running this task was activated. For safety, LLM Pulse does not execute resume commands automatically.";
 "未找到仍在运行的对应会话，已在 Finder 中显示项目目录。" = "No matching live session was found, so the project folder was revealed in Finder.";
-"无法打开“%@”。请确认对应应用和项目目录仍然可用。" = "Unable to open “%@”. Make sure the corresponding app and project folder are still available.";
+"无法打开“%@”。请确认对应应用已安装；Claude Code 和 ZCode 还需保持运行。" = "Unable to open “%@”. Make sure the corresponding app is installed; Claude Code and ZCode must also be running.";
 "关闭导航提示" = "Dismiss navigation notice";
 "双指左右滑动，或按 Control 加左右方向键切换模型" = "Swipe left or right with two fingers, or press Control plus the Left or Right Arrow key, to switch models";
 "双指左右滑动，或按 Control+←/→ 切换模型" = "Swipe left or right with two fingers, or press Control+←/→ to switch models";

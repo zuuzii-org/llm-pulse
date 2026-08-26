@@ -4,17 +4,17 @@
 
 LLM Pulse 面向单机、单用户的本机编码 agent 任务。核心约束是：状态尽可能及时且可解释，所有任务数据留在本机，并且绝不修改任何被观测工具的持久化数据。
 
-当前注册两个运行时 source：**Codex Desktop** 与 **Claude Code**。两者各自独立超时，一个不可用不会拖住另一个。用户通过双指左右滑动或 `Control+←/→` 在模型页之间切换（`HorizontalModelSwipeState` + `ModelSelectionStore`），菜单栏计数始终是全局汇总。
+当前注册三个运行时 source：**Codex Desktop**、**Claude Code** 与 **ZCode / GLM**。三者各自独立超时，一个不可用不会拖住其余 source。用户通过双指左右滑动或 `Control+←/→` 在模型页之间切换（`HorizontalModelSwipeState` + `ModelSelectionStore`），菜单栏计数始终是全局汇总。
 
 ## 数据流
 
 1. `TaskMonitor` 定时请求 `PulseHubRepository` 刷新已注册的物理 source。
-2. Codex source 组合本机 App Server、可选 Codex plugin journal、read-only SQLite、rollout JSONL 与 Agent 观察器；Claude source 组合会话注册表、转录 JSONL 与 workflow journal。
+2. Codex source 组合本机 App Server、可选 Codex plugin journal、read-only SQLite、rollout JSONL 与 Agent 观察器；Claude source 组合会话注册表、转录 JSONL 与 workflow journal；ZCode source 组合 read-only SQLite 与最小字段白名单事件日志。
 3. source 先形成经过一致性验证的任务与用量快照，Hub 再应用已查看回执、保留策略和全局汇总。
 4. `ReceiptStore` 只在 LLM Pulse 自有数据库中保存已查看回执，并执行 owner、文件类型、link count 与 `SQLITE_OPEN_NOFOLLOW` 校验。
 5. UI、通知和导航只依赖领域快照，不直接读取 SQLite、JSONL 或 journal。
 
-单次刷新必须原子发布：不允许把不同刷新代次的任务、Agent 或用量字段拼成一个看似完整的结果。任一 adapter 暂时失败时，按其健康状态降级或保留仍可信的最近值，不写入或修复 Codex 文件。
+单次刷新必须原子发布：不允许把不同刷新代次的任务、Agent 或用量字段拼成一个看似完整的结果。任一 adapter 暂时失败时，按其健康状态降级或保留仍可信的最近值，不写入或修复任何被观测工具的文件。
 
 ## Codex 数据源
 
@@ -92,7 +92,7 @@ Claude 侧的证据比 Codex 更硬：`~/.claude/sessions/<pid>.json` 以进程�
 
 Claude 模型页的用量卡片分两部分，二者的保证强度不同，因此在视觉上也不同。
 
-**本机观测（强）**：LLM Pulse 自己从转录里折叠出的 token 累计与请求数，口径与 Codex 一致——缓存计入 input，`cachedInputTokens` 是 input 的子集——所以两个运行时的数字可直接比较。统计范围是当前列表中的会话，随保留窗口滚动，不声称是应用无从获知的历史总量。
+**本机观测（强）**：LLM Pulse 自己从转录里折叠出的 token 累计与请求数，口径与 Codex 一致——缓存计入 input，`cachedInputTokens` 是 input 的子集——所以 Claude 与 Codex 的这组数字可直接比较。统计范围是当前列表中的会话，随保留窗口滚动，不声称是应用无从获知的历史总量。
 
 **账户额度（弱）**：读 `~/Library/Application Support/Claude/plan-usage-history.json` 的最新样本，得到 5 小时窗与 7 天窗的已用百分比。
 
@@ -126,11 +126,37 @@ CLI 侧从响应头 `anthropic-ratelimit-unified-{five_hour,seven_day}-{utilizat
 
 ### 会员行
 
-两个模型页在重置行下方各有一行会员状态，数据来源与保证强度逐项标明：
+三个模型页各有一行会员状态，数据来源与保证强度逐项标明：
 
-- **套餐名（强）**：Claude 读 `~/.claude.json` 的 `oauthAccount.organizationRateLimitTier`（`ClaudeAccountReader` 只取该对象的三个字段，绝不触碰 `mcpServers` 等可能含密钥的部分）；Codex 用遥测里已有的 `planType`。
-- **到期/续费日（分层）**：设置里手动填写的日期最优先、精确显示；其次是 `claudeCodeTrialEndsAt` 记录的试用截止（官方值，精确）；最后按 `subscriptionCreatedAt` 以整月为周期推导下一次续费——这是「Apple 订阅按购买日按月续费」的假设，年付或已取消续订时会错，因此始终标「约」，且推导永远从原始锚点出发以免被短月拖偏。三者都没有时只显示套餐名。
+- **套餐名（强）**：Claude 读 `~/.claude.json` 的 `oauthAccount.organizationRateLimitTier`（`ClaudeAccountReader` 只取该对象的三个字段，绝不触碰 `mcpServers` 等可能含密钥的部分）；Codex 用遥测里已有的 `planType`；ZCode 只在当前 GLM selection 的 provider 明确为 `*-coding-plan` 时显示 `Coding Plan`。
+- **到期/续费日（分层）**：设置里手动填写的日期最优先、精确显示；其次是 `claudeCodeTrialEndsAt` 记录的试用截止（官方值，精确）；最后按 `subscriptionCreatedAt` 以整月为周期推导下一次续费——这是「Apple 订阅按购买日按月续费」的假设，年付或已取消续订时会错，因此始终标「约」，且推导永远从原始锚点出发以免被短月拖偏。ZCode 没有可信的本地到期日或 subscription anchor，因此 GLM 到期日只能手动填写，绝不推测。
 - `.claude.json` 与用量历史同样按文件 stamp 缓存解析，750ms 轮询不重复读。
+
+## ZCode / GLM 数据源
+
+该 source 针对本机已验证的 ZCode 数据布局，只展示**当前 selection 使用 GLM 的 ZCode 根任务**。它不会把通过 Claude Code 或其他兼容 endpoint 调用 GLM 的会话误归到 GLM 页面。
+
+### 根任务与模型判定
+
+- SQLite 固定读取 `~/.zcode/cli/db/db.sqlite`，以 `SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX` 打开并启用 `PRAGMA query_only = ON`；活跃 WAL 会被 SQLite 正常合并读取。
+- 根任务必须满足 `session.parent_id IS NULL AND task_type = 'interactive'`。查询按 `time_updated` 倒序并限制最近 500 条，避免 750ms 轮询随历史无界增长；子 session 从不生成独立任务行。
+- 当前模型优先取根 session 最新的 `runtime/model_selection`，仅解码 `providerId`、`modelId`、`thoughtLevel`；该记录缺失时才回退到最新 `model_usage`。provider 必须属于 `builtin:bigmodel*` 或 `builtin:zai*`，且 model 必须以 `GLM` 开头。
+- schema、文件 owner、硬链接数、文件类型或权限不满足合同即 fail closed。读取器从不迁移、修复或写回 ZCode 数据库。
+
+### 状态、等待授权与 Agent
+
+ZCode 的诊断日志位于 `~/.zcode/cli/log/zcode-YYYY-MM-DD.jsonl`。只扫描最近三个合法日期文件，并对白名单字段解码：`timestamp`、`event`、`status`、`sessionId`、`turnId`、`toolCallId`，以及 `context` 中的 `agentId`、permission id 和 `decision`。`message`、`error`、prompt、tool payload、response 与其他 context 一概不进入领域对象。
+
+- `turn.started/completed/failed` 决定当前 turn 的运行与终态。
+- ZCode 3.8.1 logger 的 `tool.permission.evaluated` 仅在 `decision == "ask" && status == "waiting"` 时进入 `waitingForApproval`；`tool.permission.resolved/denied` 以 `turnId + toolCallId` 配对后回到运行态。内部 protocol 的 `permission.*` 名称仅保留为兼容 alias。
+- `subagent.spawned/completed` 按 `agentId` 折叠到根任务，子 Agent 不单列；非终态主 Agent 计为 1，最终显示值为主 Agent 加全部活跃子 Agent。事件缺字段或跨 turn 时不会伪造状态；permission 异常会丢弃该 session 的不可信状态，subagent 异常会把 Agent 可信度降为 unavailable。
+- 未换行的尾部半行延后到下一轮；单文件 64 MiB、单行 4 MiB 为硬上限。日志 stamp 和根 session 集未变化时复用缓存，避免每 750ms 重放整份文件。
+
+### Token、会员与导航
+
+- 根任务 token 通过 recursive CTE 聚合自身及全部 descendant session，但只统计受支持 GLM provider/model 的 `model_usage`。`computed_total_tokens = input + output + reasoning`；cache read/create 都是 input 子集，展示时不得重复相加。
+- ZCode 本地数据没有可信的账户 quota、重置时刻或订阅到期日，因此 `rateLimits` 始终为空；`Coding Plan` 只表示 provider 类型。GLM 到期日由用户在设置中手动填写。
+- 已验证的 ZCode URL scheme 没有 task/session 路由。点击 GLM 行只激活运行中的 `dev.zcode.app`，不猜测 deep link、不创建或修改会话。
 
 ## 状态归并
 
@@ -147,6 +173,8 @@ CLI 侧从响应头 `anthropic-ratelimit-unified-{five_hour,seven_day}-{utilizat
 
 Codex hooks 暂无单独的 approval-resolved 事件。`PermissionRequest` 后只能等待 `PostToolUse` 确认工具已继续，因此“批准后、工具结束前”可能短暂显示 `waitingForApproval`。
 
+ZCode 不复用上述 Codex hook 语义：它以同一 root/current turn 下配对的 `tool.permission.evaluated/resolved/denied` 为准。没有 `decision == "ask"` 的 evaluated 事件不能生成等待授权。
+
 ## Agent 活跃观测
 
 - 界面展示“活跃 Agent 总数”，包含非终态主 Agent 与其全部层级的非终态子 Agent；等待授权或回答仍计为活跃。
@@ -162,14 +190,15 @@ Codex hooks 暂无单独的 approval-resolved 事件。`PermissionRequest` 后�
 - 面板不再展示终态任务：完成、失败与中断只通过系统通知送达，通知的「标记已查看」动作仍写入回执。
 - 回执机制在数据层完整保留（`ReceiptStore`、`thread_id + turn_id` 主键、首启基线），供通知去重与可能的未来界面使用；保留策略（24h / 20 条 / 未读优先）继续在快照层生效，只是不再有对应的列表渲染。
 - Claude 行激活刻意不使用 `claude://resume`：该深链的语义是把 CLI 转录**导入**为一个新的桌面会话，其去重只认自己导入过的会话（前缀 + CLI id），对桌面原生会话每点一次就复制一个「General coding session」。桌面自身的会话 id 不落盘，无法从外部精确定位，因此点击 Claude 行只激活桌面应用。
+- GLM 行同样不猜测 session deep link：当前已验证的 ZCode scheme 只覆盖 OAuth、支付和 workspace 打开，没有 task/session 路由，因此点击只激活运行中的 ZCode。
 
 ## Token 与每周额度语义
 
 ### Token
 
 - session 累计总量优先取 rollout 最后一个非空 `total_token_usage`；SQLite `threads.tokens_used` 仅在缺少明细时作为只读降级来源。
-- `total_tokens = input_tokens + output_tokens`；`cached_input_tokens` 是 input 子集，`reasoning_output_tokens` 是 output 子集，界面不得重复相加。
-- parser 只提取 `token_count` 的数值字段，不缓存同一 rollout 中的 prompt、tool input、tool output 或正文。
+- Codex/Claude 的 `total_tokens = input_tokens + output_tokens`；`cached_input_tokens` 是 input 子集，`reasoning_output_tokens` 是 output 子集。ZCode 原始 ledger 把 reasoning 作为独立 bucket，因而先按 `input + output + reasoning` 验证 `computed_total_tokens`，再映射到通用用量快照。界面不得重复相加 cache 或 reasoning。
+- Codex rollout parser 只提取 `token_count` 的数值字段；Claude 与 ZCode parser 也各自使用字段白名单。三者都不缓存 prompt、tool input、tool output 或正文。
 
 ### Weekly
 
@@ -183,7 +212,7 @@ Codex hooks 暂无单独的 approval-resolved 事件。`PermissionRequest` 后�
 ## 注意力与通知策略
 
 - 菜单栏显示全局“活跃 / 最近”双行计数；运行圆点按“失败红 > 等待用户橙 > 正常蓝”决定颜色。
-- “打开下一条需处理任务”按等待授权、等待回答和更新时间排序，并使用只读 Codex deep link。
+- “打开下一条需处理任务”按等待授权、等待回答和更新时间排序；Codex 使用只读 deep link，Claude Code 与 ZCode 仅激活对应的运行中应用。
 - 通知档位默认为“仅需我处理”；“重要状态”增加完成通知，“全部”再增加中断通知。
 - 项目聚焦和静音使用最近 Git 根目录；无 Git 时使用规范化工作目录。静音只过滤任务通知，不影响采集、右栏或菜单栏计数。
 - `UserDefaults` 只保存项目身份的 SHA-256 与到期时间；旧版明文路径 key 在启动时迁移为哈希。
@@ -191,7 +220,7 @@ Codex hooks 暂无单独的 approval-resolved 事件。`PermissionRequest` 后�
 - weekly 使用自己的 `observedAt` 判断新鲜度；阈值提醒以 `plan + weekly window + resets_at + threshold` 去重并持久化。
 - 通知权限请求期间或 Notification Center 临时投递失败时，只要任务状态仍有效，就按封顶退避重试。
 - “稍后提醒”定期与任务状态、通知档位、项目静音和 weekly reset window 对账；条件失效后删除。
-- 通知动作只允许打开 Codex 任务、打开 LLM Pulse、稍后提醒或写入 LLM Pulse 自有已查看回执。
+- 通知动作只允许打开/激活任务所属应用、打开 LLM Pulse、稍后提醒或写入 LLM Pulse 自有已查看回执。任务 route、snooze 对账与完成摘要均按 `ModelProfileID` 隔离；quota 通知仍只属于 Codex weekly。
 
 ## macOS 宿主
 
@@ -215,24 +244,25 @@ Codex hooks 暂无单独的 approval-resolved 事件。`PermissionRequest` 后�
 
 ## 通用领域底座
 
-`ModelIdentity`、`ModelTaskSnapshot`、`PulseHubSnapshot` 和 source-set 协议保持来源无关，以便测试隔离、故障边界和未来维护。生产配置注册 Codex 与 Claude Code 两个 source。新增任何其他 source 必须重新经过明确的产品决策、隐私审查、真实数据验证和发布门禁，不能仅凭底座存在而自动启用。
+`ModelIdentity`、`ModelTaskSnapshot`、`PulseHubSnapshot` 和 source-set 协议保持来源无关，以便测试隔离、故障边界和未来维护。当前配置注册 Codex、Claude Code 与本机 ZCode/GLM 三个 source。新增任何其他 source 必须重新经过明确的产品决策、隐私审查、真实数据验证和发布门禁，不能仅凭底座存在而自动启用。
 
 ## 本地开发
 
-应用的全部数据来自两个工具的私有目录，没有 mock 后端，空数据下就是一个空面板。以下是全仓**仅有的**运行时注入点：
+应用的全部数据来自三个工具的私有目录，没有 mock 后端，空数据下就是一个空面板。以下是全仓**仅有的**运行时注入点：
 
 | 开关 | 作用 |
 | --- | --- |
 | `CODEX_HOME` | 改写 Codex 数据根（`CodexPaths.live(environment:)`） |
 | `CLAUDE_CONFIG_DIR` | 改写 Claude 数据根（`ClaudePaths.live(environment:)`） |
+| `ZCODE_HOME` | 改写 ZCode 数据根（`ZCodePaths.live(environment:)`） |
 | `--show-panel-for-ui-test` | DEBUG 构建：直接展开面板并关闭自动消失（`AppCoordinator`） |
-| `LLM_PULSE_RUN_LIVE_SMOKE=1` | 打开两个真机烟测；它们读真实数据，但把回执重定向到临时目录 |
+| `LLM_PULSE_RUN_LIVE_SMOKE=1` | 打开 Codex/Claude/ZCode 真机烟测；它们只输出 aggregate/health，Hub 烟测把回执重定向到临时目录 |
 | `LLM_PULSE_RENDER_QA_PATH` / `LLM_PULSE_STATUS_ITEM_QA_PATH` | 两个渲染测试输出 PNG 的位置 |
 
-造假数据树的配方可直接抄测试：Codex 侧见 `CodexSQLiteTaskAdapterTests`（DDL，库名必须匹配 `state_<Int>.sqlite`）与 `TaskRepositoryTests.writeRunningRollout`（`session_meta` 最小形状；`originator` 与 `source` 不对会被静默拒绝）；Claude 侧见 `ClaudeTaskRepositoryTests.Tree`。
+造假数据树的配方可直接抄测试：Codex 侧见 `CodexSQLiteTaskAdapterTests`（DDL，库名必须匹配 `state_<Int>.sqlite`）与 `TaskRepositoryTests.writeRunningRollout`（`session_meta` 最小形状；`originator` 与 `source` 不对会被静默拒绝）；Claude 侧见 `ClaudeTaskRepositoryTests.Tree`；ZCode 侧见 `ZCodeTestTree`。
 
 ```bash
-CODEX_HOME=/tmp/fake-codex CLAUDE_CONFIG_DIR=/tmp/fake-claude \
+CODEX_HOME=/tmp/fake-codex CLAUDE_CONFIG_DIR=/tmp/fake-claude ZCODE_HOME=/tmp/fake-zcode \
   open ".build/DerivedData/Build/Products/Debug/LLM Pulse.app" --args --show-panel-for-ui-test
 ```
 
