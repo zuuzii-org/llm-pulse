@@ -9,7 +9,7 @@ LLM Pulse 面向单机、单用户的本机编码 agent 任务。核心约束是
 ## 数据流
 
 1. `TaskMonitor` 定时请求 `PulseHubRepository` 刷新已注册的物理 source。
-2. Codex source 组合本机 App Server、可选 Codex plugin journal、read-only SQLite、rollout JSONL 与 Agent 观察器；Claude source 组合会话注册表、转录 JSONL 与 workflow journal；ZCode source 组合 read-only SQLite 与最小字段白名单事件日志。
+2. Codex source 组合本机 App Server、可选 Codex plugin journal、read-only SQLite、rollout JSONL 与 Agent 观察器；Claude source 组合会话注册表、转录 JSONL 与 workflow journal；ZCode source 组合 read-only SQLite、最小字段白名单事件日志与只读 entitlement Local Storage 缓存。
 3. source 先形成经过一致性验证的任务与用量快照，Hub 再应用已查看回执、保留策略和全局汇总。
 4. `ReceiptStore` 只在 LLM Pulse 自有数据库中保存已查看回执，并执行 owner、文件类型、link count 与 `SQLITE_OPEN_NOFOLLOW` 校验。
 5. UI、通知和导航只依赖领域快照，不直接读取 SQLite、JSONL 或 journal。
@@ -128,8 +128,8 @@ CLI 侧从响应头 `anthropic-ratelimit-unified-{five_hour,seven_day}-{utilizat
 
 三个模型页各有一行会员状态，数据来源与保证强度逐项标明：
 
-- **套餐名（强）**：Claude 读 `~/.claude.json` 的 `oauthAccount.organizationRateLimitTier`（`ClaudeAccountReader` 只取该对象的三个字段，绝不触碰 `mcpServers` 等可能含密钥的部分）；Codex 用遥测里已有的 `planType`；ZCode 只在当前 GLM selection 的 provider 明确为 `*-coding-plan` 时显示 `Coding Plan`。
-- **到期/续费日（分层）**：设置里手动填写的日期最优先、精确显示；其次是 `claudeCodeTrialEndsAt` 记录的试用截止（官方值，精确）；最后按 `subscriptionCreatedAt` 以整月为周期推导下一次续费——这是「Apple 订阅按购买日按月续费」的假设，年付或已取消续订时会错，因此始终标「约」，且推导永远从原始锚点出发以免被短月拖偏。ZCode 没有可信的本地到期日或 subscription anchor，因此 GLM 到期日只能手动填写，绝不推测。
+- **套餐名（强）**：Claude 读 `~/.claude.json` 的 `oauthAccount.organizationRateLimitTier`（`ClaudeAccountReader` 只取该对象的三个字段，绝不触碰 `mcpServers` 等可能含密钥的部分）；Codex 用遥测里已有的 `planType`；ZCode 优先取新鲜 entitlement 快照里的 `productName` / quota `level`，没有可信快照时只在当前 GLM selection 的 provider 明确为 `*-coding-plan` 时回退显示 `Coding Plan`。
+- **到期/续费日（分层）**：设置里手动填写的日期最优先、精确显示；其次是厂商快照明确给出的 expiry，再其次是明确给出的 renewal，之后才是 `claudeCodeTrialEndsAt` 记录的试用截止；最后按 `subscriptionCreatedAt` 以整月为周期推导下一次续费——这是「Apple 订阅按购买日按月续费」的假设，年付或已取消续订时会错，因此始终标「约」，且推导永远从原始锚点出发以免被短月拖偏。ZCode entitlement 快照里的 `expireTime` / `renewTime` 属于厂商精确值；已过去的 renewal 不再染成到期异常，而显示「续费信息待刷新」。
 - `.claude.json` 与用量历史同样按文件 stamp 缓存解析，750ms 轮询不重复读。
 
 ## ZCode / GLM 数据源
@@ -152,10 +152,21 @@ ZCode 的诊断日志位于 `~/.zcode/cli/log/zcode-YYYY-MM-DD.jsonl`。只扫�
 - `subagent.spawned/completed` 按 `agentId` 折叠到根任务，子 Agent 不单列；非终态主 Agent 计为 1，最终显示值为主 Agent 加全部活跃子 Agent。事件缺字段或跨 turn 时不会伪造状态；permission 异常会丢弃该 session 的不可信状态，subagent 异常会把 Agent 可信度降为 unavailable。
 - 未换行的尾部半行延后到下一轮；单文件 64 MiB、单行 4 MiB 为硬上限。日志 stamp 和根 session 集未变化时复用缓存，避免每 750ms 重放整份文件。
 
-### Token、会员与导航
+### Entitlement Local Storage
+
+ZCode renderer 会把 Coding Plan entitlement 以 `{cachedAt, snapshot}` 写入 `~/Library/Application Support/ZCode/session/Local Storage/leveldb`。`ZCodeEntitlementCacheReader` 原地只读 Chromium LevelDB，不复制、不修复、不 compact，也不通过 API 刷新：
+
+- 只接受 `builtin:bigmodel-coding-plan` 与 `builtin:zai-coding-plan` 两个 typed provider；value 只解码 quota 的 `level/limits` 与 subscription `details` 中显示所需的白名单字段。key 中的账户/fingerprint 后缀只在内存中转成 SHA-256 identity，以正确应用 sequence 与 tombstone，不进入领域快照或日志。
+- 以 `CURRENT → MANIFEST` 解析 active SST 与 WAL，合并 internal-key sequence / deletion；支持 raw 与 Snappy block。文件 owner、类型、link count、权限、CRC、边界、MANIFEST active set 或读取前后 stamp 不满足合同即 fail closed；750ms 刷新只检查 stamp，未变化时复用解析结果。
+- entitlement 默认 TTL 为 10 分钟。只有 `cachedAt` 新鲜、上游 `percentage` 合法且 `nextResetTime` 尚未经过的窗口才能生成 `RateLimitSnapshot`；`number` 是 5h/7d 窗口长度，绝不作为额度分母。5h 用 token-like limit 的 `unit == 3 && number == 5` 识别，7 天窗用 `unit == 6` 识别。
+- 当前可见 GLM 根任务的 provider 可以消歧；ZCode 空闲时只有恰好一个 official provider 的 fresh observation 才可展示。多个 provider/account 无法消歧、格式漂移或陈旧缓存均隐藏额度与厂商日期，不猜测、不跨账户聚合；设置里的手动日期不受影响。
+- entitlement adapter 是可选观测源，不参与任务 lifecycle 完整性，也不生成 GLM quota 通知；格式漂移会成为可操作健康提示，其余暂时缺失只静默降级。
+
+### Token、额度、会员与导航
 
 - 根任务 token 通过 recursive CTE 聚合自身及全部 descendant session，但只统计受支持 GLM provider/model 的 `model_usage`。`computed_total_tokens = input + output + reasoning`；cache read/create 都是 input 子集，展示时不得重复相加。
-- ZCode 本地数据没有可信的账户 quota、重置时刻或订阅到期日，因此 `rateLimits` 始终为空；`Coding Plan` 只表示 provider 类型。GLM 到期日由用户在设置中手动填写。
+- 新鲜 entitlement 快照提供 5 小时与 7 天窗口的已用百分比和厂商重置时刻；UI 显示 `100 - percentage` 的剩余百分比，并以北京时间格式化重置时间。缺少 percentage 的窗口不会用 `remaining / number` 猜测，也不会渲染永久 loading 行。
+- 单条明确 subscription detail 可提供精确套餐名和 `renewTime` / `expireTime`；多条详情只隐藏会员字段并降级健康状态，不连带丢弃仍可信的额度窗口。设置里的手动日期优先级最高。
 - 已验证的 ZCode URL scheme 没有 task/session 路由。点击 GLM 行只激活运行中的 `dev.zcode.app`，不猜测 deep link、不创建或修改会话。
 
 ## 状态归并

@@ -3,7 +3,7 @@ import XCTest
 @testable import LLMPulse
 
 /// Opt-in, read-only validation against the developer machine's real ZCode
-/// SQLite ledger and lifecycle event log.
+/// SQLite ledger, lifecycle event log, and renderer entitlement cache.
 ///
 /// Run with `LLM_PULSE_RUN_LIVE_SMOKE=1`. Diagnostics intentionally contain
 /// only aggregate counters and adapter health; they never include a title,
@@ -51,6 +51,58 @@ final class ZCodeLiveSmokeTests: XCTestCase {
         XCTAssertEqual(snapshot.identity, .glm)
         XCTAssertTrue(snapshot.tasks.allSatisfy { $0.identity == .glm })
 
+        let entitlementHealth = snapshot.health.first {
+            $0.adapter == .zcodeEntitlementCache
+        }
+        XCTAssertNotEqual(
+            entitlementHealth?.reason,
+            .formatDrift,
+            "The installed ZCode entitlement cache format has drifted."
+        )
+        if let rateLimits = snapshot.rateLimits {
+            for window in [rateLimits.fiveHour, rateLimits.weekly].compactMap({ $0 }) {
+                XCTAssertTrue((0...100).contains(window.usedPercent))
+                XCTAssertGreaterThan(window.resetsAt, snapshot.refreshedAt)
+                if let observedAt = window.observedAt {
+                    XCTAssertLessThanOrEqual(
+                        observedAt,
+                        snapshot.refreshedAt.addingTimeInterval(60)
+                    )
+                }
+            }
+        }
+
+        // The product TTL intentionally hides old values. A second read with an
+        // unbounded age verifies the installed LevelDB shape even when ZCode has
+        // not refreshed its renderer-owned entitlement snapshot recently.
+        let entitlementReader = ZCodeEntitlementCacheReader(
+            entitlementLocalStorageDirectory: paths.entitlementLocalStorageDirectory,
+            maximumCacheAge: .greatestFiniteMagnitude
+        )
+        let entitlementResults = ZCodeEntitlementCacheReader.ProviderID.allCases.map {
+            entitlementReader.read(provider: $0, now: .now)
+        }
+        XCTAssertFalse(entitlementResults.contains { result in
+            if case .formatDrift = result { return true }
+            return false
+        })
+        XCTAssertFalse(entitlementResults.contains { result in
+            if case .unreadable = result { return true }
+            return false
+        })
+        for observation in entitlementResults.compactMap({ result in
+            if case let .observed(observation) = result { return observation }
+            return nil
+        }) {
+            for limit in [observation.fiveHour, observation.weekly].compactMap({ $0 }) {
+                if let usedPercent = limit.usedPercent {
+                    XCTAssertTrue((0...100).contains(usedPercent))
+                }
+                XCTAssertTrue(limit.number?.isFinite ?? true)
+                XCTAssertTrue(limit.remaining?.isFinite ?? true)
+            }
+        }
+
         if let usage = snapshot.usage {
             XCTAssertGreaterThanOrEqual(usage.inputTokens, 0)
             XCTAssertGreaterThanOrEqual(usage.outputTokens, 0)
@@ -90,7 +142,8 @@ final class ZCodeLiveSmokeTests: XCTestCase {
                 + "tasks=\(snapshot.tasks.count) "
                 + "tokens=\(snapshot.usage?.totalTokens ?? 0) "
                 + "requests=\(snapshot.usage?.observedRequestCount ?? 0) "
-                + "health=\(healthSummary)"
+                + "health=\(healthSummary) "
+                + "entitlement=\(entitlementResults.map(entitlementStatusName).joined(separator: ","))"
         )
     }
 
@@ -109,6 +162,19 @@ final class ZCodeLiveSmokeTests: XCTestCase {
         case .healthy: "healthy"
         case .degraded: "degraded"
         case .unavailable: "unavailable"
+        }
+    }
+
+    private func entitlementStatusName(
+        _ result: ZCodeEntitlementCacheReader.ReadResult
+    ) -> String {
+        switch result {
+        case .observed: "observed"
+        case .absent: "absent"
+        case .stale: "stale"
+        case .unreadable: "unreadable"
+        case .formatDrift: "formatDrift"
+        case .ambiguous: "ambiguous"
         }
     }
 

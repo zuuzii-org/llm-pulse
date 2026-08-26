@@ -33,6 +33,23 @@ final class PulseTaskPresentationTests: XCTestCase {
             ).displayMessage(language: .simplifiedChinese),
             "无法读取 ZCode 任务事件记录"
         )
+        XCTAssertEqual(
+            AdapterHealth.unavailable(
+                .zcodeEntitlementCache,
+                message: "missing"
+            ).displayMessage(language: .english),
+            "Unable to read the ZCode quota and membership cache"
+        )
+        let entitlementDrift = AdapterHealth.unavailable(
+            .zcodeEntitlementCache,
+            message: "schema changed",
+            reason: .formatDrift
+        )
+        XCTAssertEqual(
+            entitlementDrift.displayMessage(language: .simplifiedChinese),
+            "GLM Coding Plan 数据格式可能已更新，额度与会员信息暂不可用"
+        )
+        XCTAssertTrue(entitlementDrift.isActionable)
     }
 
     func testProjectDisplayNameUsesNearestGitRoot() throws {

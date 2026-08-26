@@ -249,6 +249,21 @@ final class NotificationServiceTests: XCTestCase {
                 )
             )
         )
+        XCTAssertFalse(
+            TaskNotificationSnapshotReliability.mayBeIncomplete(
+                TaskSnapshot(
+                    tasks: [],
+                    refreshedAt: now,
+                    health: [
+                        .unavailable(
+                            .zcodeEntitlementCache,
+                            message: "optional cache is absent"
+                        ),
+                    ]
+                )
+            ),
+            "Optional quota metadata must not suppress task notifications."
+        )
     }
 
     func testAttentionLevelsKeepDefaultNotificationsLowNoise() {

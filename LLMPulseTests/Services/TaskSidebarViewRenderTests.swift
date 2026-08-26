@@ -41,6 +41,187 @@ final class TaskSidebarViewRenderTests: XCTestCase {
         )
     }
 
+    func testGLMRateLimitCardPresentsFiveHourAndSevenDayWithoutWeeklyCopy() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let snapshot = RateLimitSnapshot(
+            fiveHour: RateLimitWindowSnapshot(
+                usedPercent: 10,
+                windowMinutes: RateLimitWindowDuration.legacyFiveHourMinutes,
+                resetsAt: now.addingTimeInterval(60 * 60)
+            ),
+            weekly: RateLimitWindowSnapshot(
+                usedPercent: 40,
+                windowMinutes: RateLimitWindowDuration.weeklyMinutes,
+                resetsAt: now.addingTimeInterval(2 * 24 * 60 * 60)
+            ),
+            updatedAt: now
+        )
+
+        let windows = RateLimitCardPresentation.windows(
+            profileID: .glm,
+            rateLimits: snapshot
+        )
+        XCTAssertEqual(windows.map(\.titleKey), ["5h 余额", "7 天余额"])
+        XCTAssertEqual(
+            windows.map(\.helpTextKey),
+            ["最近 5 小时额度的剩余比例", "7 天额度的剩余比例"]
+        )
+        XCTAssertFalse(windows.flatMap { [$0.titleKey, $0.helpTextKey] }.contains {
+            $0.contains("本周")
+        })
+        XCTAssertEqual(
+            RateLimitCardPresentation.displayedWindowMinutes(
+                profileID: .glm,
+                rateLimits: snapshot
+            ),
+            [
+                RateLimitWindowDuration.legacyFiveHourMinutes,
+                RateLimitWindowDuration.weeklyMinutes,
+            ]
+        )
+        XCTAssertTrue(RateLimitCardPresentation.hasCurrentDisplayedWindow(
+            profileID: .glm,
+            rateLimits: snapshot,
+            asOf: now
+        ))
+    }
+
+    func testGLMRateLimitCardNeedsEntitlementMembershipOrManualExpiry() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let emptyRateLimits = RateLimitSnapshot(
+            fiveHour: nil,
+            weekly: nil,
+            updatedAt: now
+        )
+        XCTAssertFalse(RateLimitCardPresentation.shouldShowCard(
+            profileID: .glm,
+            rateLimits: nil,
+            membership: nil,
+            manualExpiry: nil
+        ))
+        XCTAssertFalse(RateLimitCardPresentation.shouldShowCard(
+            profileID: .glm,
+            rateLimits: emptyRateLimits,
+            membership: MembershipObservation(),
+            manualExpiry: nil
+        ))
+        XCTAssertTrue(RateLimitCardPresentation.shouldShowCard(
+            profileID: .glm,
+            rateLimits: nil,
+            membership: MembershipObservation(tierDisplayName: "Coding Plan"),
+            manualExpiry: nil
+        ))
+        XCTAssertTrue(RateLimitCardPresentation.shouldShowCard(
+            profileID: .glm,
+            rateLimits: nil,
+            membership: nil,
+            manualExpiry: now
+        ))
+    }
+
+    func testGLMRateLimitCardOnlyPresentsWindowsThatActuallyExist() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let weekly = RateLimitWindowSnapshot(
+            usedPercent: 40,
+            windowMinutes: RateLimitWindowDuration.weeklyMinutes,
+            resetsAt: now.addingTimeInterval(2 * 24 * 60 * 60)
+        )
+
+        let weeklyOnly = RateLimitSnapshot(
+            fiveHour: nil,
+            weekly: weekly,
+            updatedAt: now
+        )
+        XCTAssertEqual(
+            RateLimitCardPresentation.windows(
+                profileID: .glm,
+                rateLimits: weeklyOnly
+            ).map(\.id),
+            [.sevenDay]
+        )
+        XCTAssertTrue(RateLimitCardPresentation.shouldShowCard(
+            profileID: .glm,
+            rateLimits: weeklyOnly,
+            membership: nil,
+            manualExpiry: nil
+        ))
+    }
+
+    func testExactMembershipDatesUseRenewalAndExpiryCopy() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let date = now.addingTimeInterval(5 * 24 * 60 * 60)
+        let formatted = PulseDisplayClock.day(date, language: .simplifiedChinese)
+        let renewal = try XCTUnwrap(MembershipDisplay.resolve(
+            observation: MembershipObservation(renewsAt: date),
+            manualExpiry: nil,
+            now: now
+        ))
+        let expiry = try XCTUnwrap(MembershipDisplay.resolve(
+            observation: MembershipObservation(expiresAt: date),
+            manualExpiry: nil,
+            now: now
+        ))
+
+        XCTAssertEqual(
+            MembershipRowPresentation.dateText(
+                for: renewal,
+                asOf: now,
+                language: .simplifiedChinese
+            ),
+            "\(formatted) 续费"
+        )
+        XCTAssertEqual(
+            MembershipRowPresentation.dateText(
+                for: expiry,
+                asOf: now,
+                language: .simplifiedChinese
+            ),
+            "\(formatted) 到期"
+        )
+        XCTAssertTrue(
+            MembershipRowPresentation.dateText(
+                for: renewal,
+                asOf: now,
+                language: .english
+            )?.contains("Renews") == true
+        )
+        XCTAssertTrue(
+            MembershipRowPresentation.dateText(
+                for: expiry,
+                asOf: now,
+                language: .english
+            )?.contains("Expires") == true
+        )
+    }
+
+    func testPastVendorRenewalAsksForRefreshInsteadOfClaimingHistoricalRenewal() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let renewal = try XCTUnwrap(MembershipDisplay.resolve(
+            observation: MembershipObservation(
+                renewsAt: now.addingTimeInterval(-60)
+            ),
+            manualExpiry: nil,
+            now: now
+        ))
+
+        XCTAssertEqual(
+            MembershipRowPresentation.dateText(
+                for: renewal,
+                asOf: now,
+                language: .simplifiedChinese
+            ),
+            "续费信息待刷新"
+        )
+        XCTAssertEqual(
+            MembershipRowPresentation.dateText(
+                for: renewal,
+                asOf: now,
+                language: .english
+            ),
+            "Renewal details awaiting refresh"
+        )
+    }
+
     func testAttentionProjectControlsAndBulkActionRenderAtPanelWidth() throws {
         let suiteName = "TaskSidebarViewRenderTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -149,6 +330,12 @@ final class TaskSidebarViewRenderTests: XCTestCase {
                 in: [.degraded(.zcodeEventLog, message: "stale")]
             )
         )
+        XCTAssertFalse(
+            TaskStatusSourceAvailability.hasHealthyAdapter(
+                in: [.healthy(.zcodeEntitlementCache)]
+            ),
+            "Quota metadata cannot establish task lifecycle availability."
+        )
     }
 
     func testGLMUsesLocalUsageWithoutClaudePlanWindows() throws {
@@ -221,7 +408,27 @@ final class TaskSidebarViewRenderTests: XCTestCase {
                         agentConfidence: .exact
                     )],
                     usage: glmUsage,
-                    membership: MembershipObservation(tierDisplayName: "Coding Plan"),
+                    rateLimits: RateLimitSnapshot(
+                        fiveHour: RateLimitWindowSnapshot(
+                            usedPercent: 24,
+                            windowMinutes: RateLimitWindowDuration.legacyFiveHourMinutes,
+                            resetsAt: now.addingTimeInterval(3 * 60 * 60),
+                            observedAt: now
+                        ),
+                        weekly: RateLimitWindowSnapshot(
+                            usedPercent: 41,
+                            windowMinutes: RateLimitWindowDuration.weeklyMinutes,
+                            resetsAt: now.addingTimeInterval(4 * 24 * 60 * 60),
+                            observedAt: now
+                        ),
+                        updatedAt: now,
+                        planType: "coding-plan",
+                        limitID: "glm-coding-plan"
+                    ),
+                    membership: MembershipObservation(
+                        tierDisplayName: "Coding Plan",
+                        renewsAt: now.addingTimeInterval(12 * 24 * 60 * 60)
+                    ),
                     health: [
                         .healthy(.zcodeSQLite, at: now),
                         .healthy(.zcodeEventLog, at: now),

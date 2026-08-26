@@ -1,26 +1,39 @@
 import Foundation
 
-/// Composes ZCode's normalized SQLite ledger and its narrow lifecycle event
-/// stream. Both sources are read-only and fail independently.
+/// Composes ZCode's normalized SQLite ledger, narrow lifecycle events, and
+/// renderer-owned entitlement cache. All sources are read-only and fail
+/// independently.
 actor ZCodeTaskRepository {
+    private static let entitlementClockSkewTolerance: TimeInterval = 60
+
     private let paths: ZCodePaths
     private let sqliteReader: ZCodeSQLiteReader
     private let eventLogReader: ZCodeEventLogReader
+    private let entitlementReader: any ZCodeEntitlementReading
+    private let entitlementFreshnessInterval: TimeInterval
     private let runningStaleInterval: TimeInterval
     private let terminalRetentionInterval: TimeInterval
     private var cachedLogStamps: [EventLogStamp]?
     private var cachedLogRootSessionIDs: Set<String>?
     private var cachedEventResult: ZCodeEventLogReadResult?
+    private var lastEntitlementObservation: ZCodeEntitlementCacheReader.Observation?
 
     init(
         paths: ZCodePaths,
         eventLogReader: ZCodeEventLogReader = ZCodeEventLogReader(),
+        entitlementReader: (any ZCodeEntitlementReading)? = nil,
+        entitlementFreshnessInterval: TimeInterval = 10 * 60,
         runningStaleInterval: TimeInterval = TaskRetentionPolicy.runningStale,
         terminalRetentionInterval: TimeInterval = TaskRetentionPolicy.terminalRetention
     ) {
         self.paths = paths
         sqliteReader = ZCodeSQLiteReader(databaseURL: paths.databaseURL)
         self.eventLogReader = eventLogReader
+        self.entitlementReader = entitlementReader ?? ZCodeEntitlementCacheReader(
+            entitlementLocalStorageDirectory: paths.entitlementLocalStorageDirectory,
+            maximumCacheAge: entitlementFreshnessInterval
+        )
+        self.entitlementFreshnessInterval = max(0, entitlementFreshnessInterval)
         self.runningStaleInterval = runningStaleInterval
         self.terminalRetentionInterval = terminalRetentionInterval
     }
@@ -141,20 +154,322 @@ actor ZCodeTaskRepository {
             }
         }
 
-        let membership = sqliteResult.records.max(by: { $0.updatedAt < $1.updatedAt })?
-            .selection.isCodingPlan == true
-            ? MembershipObservation(tierDisplayName: "Coding Plan")
-            : nil
+        let entitlement = entitlementTelemetry(
+            records: sqliteResult.records,
+            visibleSessionIDs: visibleSessionIDs,
+            now: now
+        )
+        health.append(contentsOf: entitlement.health)
 
         return ModelTaskSnapshot(
             identity: .glm,
             tasks: tasks,
             usage: usage,
-            rateLimits: nil,
-            membership: membership,
+            rateLimits: entitlement.rateLimits,
+            membership: entitlement.membership,
             health: health,
             refreshedAt: now
         )
+    }
+
+    private func entitlementTelemetry(
+        records: [ZCodeSessionRecord],
+        visibleSessionIDs: Set<String>,
+        now: Date
+    ) -> EntitlementTelemetry {
+        let visibleRecords = records.filter {
+            visibleSessionIDs.contains($0.sessionID)
+        }
+        let visibleCodingPlanProviderIDs = Set(visibleRecords.lazy.filter {
+            $0.selection.isCodingPlan
+        }.map {
+            $0.selection.providerID.lowercased()
+        })
+        let visibleProviders = Set(visibleCodingPlanProviderIDs.compactMap {
+            ZCodeEntitlementCacheReader.ProviderID(rawValue: $0)
+        })
+
+        if visibleProviders.count != visibleCodingPlanProviderIDs.count {
+            lastEntitlementObservation = nil
+            return EntitlementTelemetry(
+                rateLimits: nil,
+                membership: nil,
+                health: [.unavailable(
+                    .zcodeEntitlementCache,
+                    message: "ZCode selected an unsupported Coding Plan provider",
+                    reason: .formatDrift
+                )]
+            )
+        }
+
+        if !visibleRecords.isEmpty, visibleProviders.isEmpty {
+            lastEntitlementObservation = nil
+            return EntitlementTelemetry(
+                rateLimits: nil,
+                membership: nil,
+                health: []
+            )
+        }
+
+        if visibleProviders.count > 1 {
+            lastEntitlementObservation = nil
+            return EntitlementTelemetry(
+                rateLimits: nil,
+                membership: nil,
+                health: [.unavailable(
+                    .zcodeEntitlementCache,
+                    message: "ZCode entitlement cache does not identify one active provider"
+                )]
+            )
+        }
+
+        if let provider = visibleProviders.first {
+            return entitlementTelemetry(
+                provider: provider,
+                result: entitlementReader.read(provider: provider, now: now),
+                now: now
+            )
+        }
+
+        // No current root can identify the account while ZCode is idle or its
+        // lifecycle log is briefly unavailable. A single fresh, provider-typed
+        // renderer cache is still authoritative; two fresh providers are not.
+        let results = ZCodeEntitlementCacheReader.ProviderID.allCases.map { provider in
+            (provider, entitlementReader.read(provider: provider, now: now))
+        }
+        let observed = results.compactMap { provider, result in
+            if case .observed = result { return (provider, result) }
+            return nil
+        }
+        if observed.count == 1, let (provider, result) = observed.first {
+            return entitlementTelemetry(provider: provider, result: result, now: now)
+        }
+        if observed.count > 1 {
+            lastEntitlementObservation = nil
+            return EntitlementTelemetry(
+                rateLimits: nil,
+                membership: nil,
+                health: [.unavailable(
+                    .zcodeEntitlementCache,
+                    message: "ZCode entitlement cache contains multiple active providers"
+                )]
+            )
+        }
+
+        let latestProvider = records.max { $0.updatedAt < $1.updatedAt }.flatMap {
+            ZCodeEntitlementCacheReader.ProviderID(rawValue: $0.selection.providerID)
+        }
+        let fallbackProvider = lastEntitlementObservation?.provider ?? latestProvider
+        if let fallbackProvider,
+           let result = results.first(where: { $0.0 == fallbackProvider })?.1
+        {
+            return entitlementTelemetry(
+                provider: fallbackProvider,
+                result: result,
+                now: now
+            )
+        }
+
+        if results.contains(where: { _, result in
+            if case .formatDrift = result { return true }
+            return false
+        }) {
+            lastEntitlementObservation = nil
+            return EntitlementTelemetry(
+                rateLimits: nil,
+                membership: nil,
+                health: [.unavailable(
+                    .zcodeEntitlementCache,
+                    message: "ZCode entitlement cache format changed",
+                    reason: .formatDrift
+                )]
+            )
+        }
+
+        lastEntitlementObservation = nil
+        return EntitlementTelemetry(
+            rateLimits: nil,
+            membership: nil,
+            health: []
+        )
+    }
+
+    private func entitlementTelemetry(
+        provider: ZCodeEntitlementCacheReader.ProviderID,
+        result: ZCodeEntitlementCacheReader.ReadResult,
+        now: Date
+    ) -> EntitlementTelemetry {
+        let fallbackMembership = MembershipObservation(tierDisplayName: "Coding Plan")
+        switch result {
+        case let .observed(observation):
+            guard observation.provider == provider else {
+                lastEntitlementObservation = nil
+                return EntitlementTelemetry(
+                    rateLimits: nil,
+                    membership: fallbackMembership,
+                    health: [.unavailable(
+                        .zcodeEntitlementCache,
+                        message: "ZCode entitlement cache returned an invalid provider",
+                        reason: .formatDrift
+                    )]
+                )
+            }
+            let telemetry = telemetry(from: observation, now: now)
+            lastEntitlementObservation = observation
+            return EntitlementTelemetry(
+                rateLimits: telemetry.rateLimits,
+                membership: telemetry.membership,
+                health: telemetry.health.isEmpty
+                    ? [.healthy(.zcodeEntitlementCache, at: observation.cachedAt)]
+                    : telemetry.health
+            )
+        case .unreadable:
+            if let retained = lastEntitlementObservation,
+               retained.provider == provider,
+               (-Self.entitlementClockSkewTolerance...entitlementFreshnessInterval).contains(
+                   now.timeIntervalSince(retained.cachedAt)
+               )
+            {
+                let telemetry = telemetry(from: retained, now: now)
+                return EntitlementTelemetry(
+                    rateLimits: telemetry.rateLimits,
+                    membership: telemetry.membership,
+                    health: [.degraded(
+                        .zcodeEntitlementCache,
+                        message: "ZCode entitlement cache changed during a read",
+                        lastSuccessAt: retained.cachedAt
+                    )]
+                )
+            }
+            lastEntitlementObservation = nil
+            return unavailableEntitlement(
+                message: "ZCode entitlement cache is unreadable",
+                fallbackMembership: fallbackMembership
+            )
+        case .absent:
+            lastEntitlementObservation = nil
+            return unavailableEntitlement(
+                message: "ZCode entitlement cache is unavailable",
+                fallbackMembership: fallbackMembership
+            )
+        case .stale:
+            lastEntitlementObservation = nil
+            return unavailableEntitlement(
+                message: "ZCode entitlement cache is stale",
+                fallbackMembership: fallbackMembership
+            )
+        case .ambiguous:
+            lastEntitlementObservation = nil
+            return unavailableEntitlement(
+                message: "ZCode entitlement cache contains multiple active accounts",
+                fallbackMembership: nil
+            )
+        case .formatDrift:
+            lastEntitlementObservation = nil
+            return EntitlementTelemetry(
+                rateLimits: nil,
+                membership: fallbackMembership,
+                health: [.unavailable(
+                    .zcodeEntitlementCache,
+                    message: "ZCode entitlement cache format changed",
+                    reason: .formatDrift
+                )]
+            )
+        }
+    }
+
+    private func telemetry(
+        from observation: ZCodeEntitlementCacheReader.Observation,
+        now: Date
+    ) -> EntitlementTelemetry {
+        let details = observation.subscriptionDetails.filter {
+            $0.productName != nil
+                || $0.billingCycle != nil
+                || $0.renewsAt != nil
+                || $0.expiresAt != nil
+        }
+        let membership = details.count == 1 ? details.first.map { detail in
+            MembershipObservation(
+                tierDisplayName: detail.productName ?? observation.level,
+                renewsAt: detail.renewsAt,
+                expiresAt: detail.expiresAt
+            )
+        } : nil
+
+        let fiveHour = rateLimitWindow(
+            observation.fiveHour,
+            windowMinutes: RateLimitWindowDuration.legacyFiveHourMinutes,
+            observedAt: observation.cachedAt,
+            now: now
+        )
+        let weekly = rateLimitWindow(
+            observation.weekly,
+            windowMinutes: RateLimitWindowDuration.weeklyMinutes,
+            observedAt: observation.cachedAt,
+            now: now
+        )
+        let rateLimits = fiveHour == nil && weekly == nil
+            ? nil
+            : RateLimitSnapshot(
+                fiveHour: fiveHour,
+                weekly: weekly,
+                updatedAt: observation.cachedAt,
+                planType: observation.level
+            )
+        return EntitlementTelemetry(
+            rateLimits: rateLimits,
+            membership: membership,
+            health: details.count > 1
+                ? [.degraded(
+                    .zcodeEntitlementCache,
+                    message: "ZCode entitlement cache contains ambiguous membership details",
+                    lastSuccessAt: observation.cachedAt
+                )]
+                : []
+        )
+    }
+
+    private func rateLimitWindow(
+        _ limit: ZCodeEntitlementCacheReader.Limit?,
+        windowMinutes: Int,
+        observedAt: Date,
+        now: Date
+    ) -> RateLimitWindowSnapshot? {
+        guard let limit,
+              let resetsAt = limit.nextResetTime,
+              resetsAt > now
+        else {
+            return nil
+        }
+        guard let usedPercent = limit.usedPercent,
+              usedPercent.isFinite,
+              (0...100).contains(usedPercent)
+        else {
+            return nil
+        }
+        return RateLimitWindowSnapshot(
+            usedPercent: usedPercent,
+            windowMinutes: windowMinutes,
+            resetsAt: resetsAt,
+            observedAt: observedAt
+        )
+    }
+
+    private func unavailableEntitlement(
+        message: String,
+        fallbackMembership: MembershipObservation?
+    ) -> EntitlementTelemetry {
+        EntitlementTelemetry(
+            rateLimits: nil,
+            membership: fallbackMembership,
+            health: [.unavailable(.zcodeEntitlementCache, message: message)]
+        )
+    }
+
+    private struct EntitlementTelemetry {
+        let rateLimits: RateLimitSnapshot?
+        let membership: MembershipObservation?
+        let health: [AdapterHealth]
     }
 
     private func makeTasks(

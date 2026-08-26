@@ -191,6 +191,12 @@ extension AdapterHealth {
     }
 
     func displayMessage(language: AppLanguage) -> String {
+        if adapter == .zcodeEntitlementCache, reason == .formatDrift {
+            return PulseL10n.text(
+                "GLM Coding Plan 数据格式可能已更新，额度与会员信息暂不可用",
+                language: language
+            )
+        }
         if reason == .formatDrift {
             return PulseL10n.text(
                 "上游数据格式可能已更新，部分任务无法识别",
@@ -226,6 +232,8 @@ extension AdapterHealth {
             return PulseL10n.text("无法读取 ZCode 本地任务索引", language: language)
         case .zcodeEventLog:
             return PulseL10n.text("无法读取 ZCode 任务事件记录", language: language)
+        case .zcodeEntitlementCache:
+            return PulseL10n.text("无法读取 ZCode 额度与会员缓存", language: language)
         }
     }
 }

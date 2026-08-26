@@ -119,7 +119,7 @@ struct SettingsView: View {
             } header: {
                 Text("会员")
             } footer: {
-                Text("填写后覆盖自动推导的续费日；读取到订阅起始日时会按月推算，GLM 到期日需手动填写。")
+                Text("填写后覆盖自动读取或推导的日期；只有读取到订阅起始日时，才会按月推算并标注为约。")
             }
 
             Section {

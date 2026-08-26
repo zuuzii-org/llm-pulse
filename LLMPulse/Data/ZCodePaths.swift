@@ -9,6 +9,7 @@ struct ZCodePaths: Sendable {
     let zcodeHome: URL
     let databaseURL: URL
     let eventLogDirectory: URL
+    let entitlementLocalStorageDirectory: URL
 
     static func live(
         environment: [String: String] = ProcessInfo.processInfo.environment,
@@ -19,10 +20,22 @@ struct ZCodePaths: Sendable {
         let zcodeHome = configuredHome.flatMap { value in
             value.isEmpty ? nil : URL(fileURLWithPath: value, isDirectory: true)
         } ?? homeDirectory.appendingPathComponent(".zcode", isDirectory: true)
-        return ZCodePaths(zcodeHome: zcodeHome)
+        return ZCodePaths(
+            zcodeHome: zcodeHome,
+            entitlementLocalStorageDirectory: homeDirectory
+                .appendingPathComponent("Library", isDirectory: true)
+                .appendingPathComponent("Application Support", isDirectory: true)
+                .appendingPathComponent("ZCode", isDirectory: true)
+                .appendingPathComponent("session", isDirectory: true)
+                .appendingPathComponent("Local Storage", isDirectory: true)
+                .appendingPathComponent("leveldb", isDirectory: true)
+        )
     }
 
-    init(zcodeHome: URL) {
+    init(
+        zcodeHome: URL,
+        entitlementLocalStorageDirectory: URL? = nil
+    ) {
         self.zcodeHome = zcodeHome
         databaseURL = zcodeHome
             .appendingPathComponent("cli", isDirectory: true)
@@ -31,6 +44,11 @@ struct ZCodePaths: Sendable {
         eventLogDirectory = zcodeHome
             .appendingPathComponent("cli", isDirectory: true)
             .appendingPathComponent("log", isDirectory: true)
+        self.entitlementLocalStorageDirectory = entitlementLocalStorageDirectory
+            ?? zcodeHome
+                .appendingPathComponent("session", isDirectory: true)
+                .appendingPathComponent("Local Storage", isDirectory: true)
+                .appendingPathComponent("leveldb", isDirectory: true)
     }
 
     /// The event stream rotates daily. Three lexicographically latest files

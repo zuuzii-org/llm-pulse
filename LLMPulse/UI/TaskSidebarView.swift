@@ -381,7 +381,32 @@ struct TaskSidebarView: View {
 
     @ViewBuilder
     private var modelTelemetry: some View {
-        if let selectedModel, selectedModel.identity.profileID != .codex {
+        if let selectedModel, selectedModel.identity.profileID == .glm {
+            let manualExpiry = settings.membershipExpiryOverride(for: .glm)
+            VStack(spacing: 8) {
+                ModelUsageCard(
+                    identity: selectedModel.identity,
+                    usage: selectedModel.usage,
+                    membership: nil,
+                    manualExpiry: nil
+                )
+                if RateLimitCardPresentation.shouldShowCard(
+                    profileID: .glm,
+                    rateLimits: selectedModel.rateLimits,
+                    membership: selectedModel.membership,
+                    manualExpiry: manualExpiry
+                ) {
+                    RateLimitCard(
+                        profileID: .glm,
+                        rateLimits: selectedModel.rateLimits,
+                        membership: selectedModel.membership,
+                        manualExpiry: manualExpiry
+                    )
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 7)
+        } else if let selectedModel, selectedModel.identity.profileID != .codex {
             ModelUsageCard(
                 identity: selectedModel.identity,
                 usage: selectedModel.usage,
@@ -394,6 +419,7 @@ struct TaskSidebarView: View {
             .padding(.vertical, 7)
         } else {
             RateLimitCard(
+                profileID: .codex,
                 rateLimits: snapshot.rateLimits,
                 membership: selectedModel?.membership,
                 manualExpiry: settings.membershipExpiryOverride(for: .codex)
@@ -1245,12 +1271,44 @@ private struct ModelUsageCard: View {
     }()
 }
 
-/// One line of membership state, shared by both model cards.
+enum MembershipRowPresentation {
+    static func dateText(
+        for display: MembershipDisplay,
+        asOf now: Date,
+        language: AppLanguage
+    ) -> String? {
+        guard let date = display.date, let kind = display.kind else { return nil }
+        if date <= now {
+            switch kind {
+            case .manualExpiry, .vendorExpiry, .trialEnd:
+                return PulseL10n.text("已到期", language: language)
+            case .vendorRenewal:
+                return PulseL10n.text("续费信息待刷新", language: language)
+            case .derivedRenewal:
+                return nil
+            }
+        }
+
+        let formatted = PulseDisplayClock.day(date, language: language)
+        switch kind {
+        case .manualExpiry, .vendorExpiry:
+            return PulseL10n.text("%@ 到期", language: language, formatted)
+        case .vendorRenewal:
+            return PulseL10n.text("%@ 续费", language: language, formatted)
+        case .trialEnd:
+            return PulseL10n.text("试用至 %@", language: language, formatted)
+        case .derivedRenewal:
+            return PulseL10n.text("约 %@ 续费", language: language, formatted)
+        }
+    }
+}
+
+/// One line of membership state, shared by the usage and quota cards.
 ///
-/// The date's provenance decides its wording: a derived renewal keeps its
-/// "约", while a manual entry and a vendor-recorded trial end are exact and
-/// drop it. Urgency is color, not extra copy — orange within a week, red once
-/// past.
+/// The date's provenance decides its wording and verb. A derived renewal keeps
+/// its "约"; an observed auto-renew says "续费"; a confirmed cancellation says
+/// "到期". Expiry urgency is color — orange within a week and red once past;
+/// a stale renewal instead asks for refreshed data in neutral text.
 private struct MembershipRowView: View {
     @Environment(\.pulseLanguage) private var language
 
@@ -1279,24 +1337,23 @@ private struct MembershipRowView: View {
     }
 
     private var dateText: String? {
-        guard let date = display.date, let kind = display.kind else { return nil }
-        if date <= now, kind != .derivedRenewal {
-            return PulseL10n.text("已到期", language: language)
-        }
-        let formatted = Self.format(date, language: language)
-        switch kind {
-        case .manualExpiry:
-            return PulseL10n.text("%@ 到期", language: language, formatted)
-        case .trialEnd:
-            return PulseL10n.text("试用至 %@", language: language, formatted)
-        case .derivedRenewal:
-            return PulseL10n.text("约 %@ 续费", language: language, formatted)
-        }
+        MembershipRowPresentation.dateText(
+            for: display,
+            asOf: now,
+            language: language
+        )
     }
 
     private var dateColor: Color {
         guard let date = display.date else { return .secondary }
-        if date <= now { return .red }
+        if date <= now {
+            switch display.kind {
+            case .manualExpiry, .vendorExpiry, .trialEnd:
+                return .red
+            case .vendorRenewal, .derivedRenewal, nil:
+                return .secondary
+            }
+        }
         if date.timeIntervalSince(now) <= 7 * 24 * 60 * 60 {
             return TaskSidebarPalette.selectedModelInk
         }
@@ -1311,15 +1368,79 @@ private struct MembershipRowView: View {
             PulseL10n.text("%@，%@", language: language, joined, part)
         }
     }
-
-    private static func format(_ date: Date, language: AppLanguage) -> String {
-        PulseDisplayClock.day(date, language: language)
-    }
 }
 
 enum RateLimitCardPresentation {
+    enum WindowID: Hashable {
+        case fiveHour
+        case sevenDay
+    }
+
+    struct Window: Identifiable {
+        let id: WindowID
+        let titleKey: String
+        let helpTextKey: String
+        let window: RateLimitWindowSnapshot?
+    }
+
+    static func windows(
+        profileID: ModelProfileID,
+        rateLimits: RateLimitSnapshot?
+    ) -> [Window] {
+        if profileID == .codex {
+            return [Window(
+                id: .sevenDay,
+                titleKey: "本周余额",
+                helpTextKey: "本周额度的剩余比例",
+                window: rateLimits?.weekly
+            )]
+        }
+        if profileID == .glm, let rateLimits {
+            var windows: [Window] = []
+            if let fiveHour = rateLimits.fiveHour {
+                windows.append(Window(
+                    id: .fiveHour,
+                    titleKey: "5h 余额",
+                    helpTextKey: "最近 5 小时额度的剩余比例",
+                    window: fiveHour
+                ))
+            }
+            if let weekly = rateLimits.weekly {
+                windows.append(Window(
+                    id: .sevenDay,
+                    titleKey: "7 天余额",
+                    helpTextKey: "7 天额度的剩余比例",
+                    window: weekly
+                ))
+            }
+            return windows
+        }
+        return []
+    }
+
+    static func shouldShowCard(
+        profileID: ModelProfileID,
+        rateLimits: RateLimitSnapshot?,
+        membership: MembershipObservation?,
+        manualExpiry: Date?
+    ) -> Bool {
+        guard profileID == .glm else { return true }
+        return !windows(profileID: profileID, rateLimits: rateLimits).isEmpty
+            || membership?.isEmpty == false
+            || manualExpiry != nil
+    }
+
     static func displayedWindowMinutes(_ rateLimits: RateLimitSnapshot?) -> [Int] {
-        rateLimits?.weekly.map { [$0.windowMinutes] } ?? []
+        displayedWindowMinutes(profileID: .codex, rateLimits: rateLimits)
+    }
+
+    static func displayedWindowMinutes(
+        profileID: ModelProfileID,
+        rateLimits: RateLimitSnapshot?
+    ) -> [Int] {
+        windows(profileID: profileID, rateLimits: rateLimits).compactMap {
+            $0.window?.windowMinutes
+        }
     }
 
     static func hasCurrentWeeklyWindow(
@@ -1328,45 +1449,74 @@ enum RateLimitCardPresentation {
     ) -> Bool {
         rateLimits?.weekly?.remainingPercent(asOf: date) != nil
     }
+
+    static func hasCurrentDisplayedWindow(
+        profileID: ModelProfileID,
+        rateLimits: RateLimitSnapshot?,
+        asOf date: Date
+    ) -> Bool {
+        windows(profileID: profileID, rateLimits: rateLimits).contains {
+            $0.window?.remainingPercent(asOf: date) != nil
+        }
+    }
 }
 
 private struct RateLimitCard: View {
     @Environment(\.pulseLanguage) private var language
 
+    let profileID: ModelProfileID
     let rateLimits: RateLimitSnapshot?
     let membership: MembershipObservation?
     let manualExpiry: Date?
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
+            let windows = RateLimitCardPresentation.windows(
+                profileID: profileID,
+                rateLimits: rateLimits
+            )
+            let membershipDisplay = MembershipDisplay.resolve(
+                observation: membership,
+                manualExpiry: manualExpiry,
+                now: context.date
+            )
             VStack(spacing: 0) {
-                QuotaWindowRow(
-                    title: PulseL10n.text("本周余额", language: language),
-                    helpText: PulseL10n.text("本周额度的剩余比例", language: language),
-                    window: rateLimits?.weekly,
-                    asOf: context.date
-                )
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-
-                if let display = MembershipDisplay.resolve(
-                    observation: membership,
-                    manualExpiry: manualExpiry,
-                    now: context.date
-                ) {
-                    MembershipRowView(display: display, now: context.date)
+                ForEach(windows) { presentation in
+                    if presentation.id != windows.first?.id {
+                        Divider()
+                            .opacity(0.24)
+                            .padding(.horizontal, 14)
+                    }
+                    QuotaWindowRow(
+                        title: PulseL10n.text(presentation.titleKey, language: language),
+                        helpText: PulseL10n.text(
+                            presentation.helpTextKey,
+                            language: language
+                        ),
+                        window: presentation.window,
+                        asOf: context.date
+                    )
                         .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+                }
+
+                if let membershipDisplay {
+                    MembershipRowView(display: membershipDisplay, now: context.date)
+                        .padding(.horizontal, 14)
+                        .padding(.top, windows.isEmpty ? 7 : 0)
                         .padding(.bottom, 7)
                 }
 
-                Divider().opacity(0.38)
+                if !windows.isEmpty {
+                    Divider().opacity(0.38)
 
-                Text(freshnessText(asOf: context.date))
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.tertiary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 5)
+                    Text(freshnessText(asOf: context.date))
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 5)
+                }
             }
         }
         .background(Color.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 11))
@@ -1381,7 +1531,11 @@ private struct RateLimitCard: View {
         guard let rateLimits else {
             return PulseL10n.text("额度待刷新", language: language)
         }
-        guard RateLimitCardPresentation.hasCurrentWeeklyWindow(rateLimits, asOf: date) else {
+        guard RateLimitCardPresentation.hasCurrentDisplayedWindow(
+            profileID: profileID,
+            rateLimits: rateLimits,
+            asOf: date
+        ) else {
             return PulseL10n.text("额度待刷新", language: language)
         }
         return PulseL10n.text(
@@ -1507,7 +1661,8 @@ enum TaskStatusSourceAvailability {
                  .sqlite,
                  .receipts,
                  .runtimeSource,
-                 .claudeAgentJournal:
+                 .claudeAgentJournal,
+                 .zcodeEntitlementCache:
                 return false
             }
         }

@@ -1,29 +1,38 @@
 import Foundation
 
-/// What is known about the account's paid plan, from read-only observation.
+/// Facts known about a paid plan from read-only vendor observations.
 ///
-/// None of the vendors persist an expiry date outright, so this carries the
-/// three facts that exist and lets `MembershipDisplay` decide what they add
-/// up to: a tier name, a trial end when the account is on one, and the
-/// subscription's start moment — which anchors the monthly renewal day the
-/// same way it anchors an App Store subscription.
+/// An exact renewal means the vendor confirms the plan will renew. An exact
+/// expiry means the vendor confirms it will end instead. Older sources may
+/// expose only a subscription anchor, which remains an explicitly approximate
+/// monthly projection rather than being promoted to a vendor fact.
 struct MembershipObservation: Equatable, Codable, Sendable {
     let tierDisplayName: String?
     let subscriptionAnchor: Date?
     let trialEndsAt: Date?
+    let renewsAt: Date?
+    let expiresAt: Date?
 
     init(
         tierDisplayName: String? = nil,
         subscriptionAnchor: Date? = nil,
-        trialEndsAt: Date? = nil
+        trialEndsAt: Date? = nil,
+        renewsAt: Date? = nil,
+        expiresAt: Date? = nil
     ) {
         self.tierDisplayName = tierDisplayName
         self.subscriptionAnchor = subscriptionAnchor
         self.trialEndsAt = trialEndsAt
+        self.renewsAt = renewsAt
+        self.expiresAt = expiresAt
     }
 
     var isEmpty: Bool {
-        tierDisplayName == nil && subscriptionAnchor == nil && trialEndsAt == nil
+        tierDisplayName == nil
+            && subscriptionAnchor == nil
+            && trialEndsAt == nil
+            && renewsAt == nil
+            && expiresAt == nil
     }
 
     /// "default_claude_max_20x" → "Max 20x". Unknown tiers keep their words
@@ -62,6 +71,10 @@ struct MembershipDisplay: Equatable, Sendable {
     enum DateKind: Equatable, Sendable {
         /// The user typed this date in Settings. Exact, no hedging.
         case manualExpiry
+        /// The vendor confirms that auto-renew is enabled. Exact.
+        case vendorRenewal
+        /// The vendor confirms that the plan will end instead of renewing. Exact.
+        case vendorExpiry
         /// The vendor recorded a trial end. Exact.
         case trialEnd
         /// Projected from the subscription's start by whole months, the way
@@ -74,9 +87,11 @@ struct MembershipDisplay: Equatable, Sendable {
     let date: Date?
     let kind: DateKind?
 
-    /// Exact dates outrank the derived one: a manual entry is the user
-    /// correcting the inference, and a recorded trial end is the vendor's
-    /// own word.
+    /// Exact dates outrank the derived one. A manual entry is the user's
+    /// correction and therefore wins over every observed value. Vendor expiry
+    /// and renewal then outrank the older trial/anchor compatibility fields. If
+    /// a malformed source supplies both expiry and renewal, expiry wins:
+    /// confirmed cancellation must not be presented as auto-renew.
     static func resolve(
         observation: MembershipObservation?,
         manualExpiry: Date?,
@@ -90,6 +105,20 @@ struct MembershipDisplay: Equatable, Sendable {
                 tierDisplayName: tier,
                 date: manualExpiry,
                 kind: .manualExpiry
+            )
+        }
+        if let expiresAt = observation?.expiresAt {
+            return MembershipDisplay(
+                tierDisplayName: tier,
+                date: expiresAt,
+                kind: .vendorExpiry
+            )
+        }
+        if let renewsAt = observation?.renewsAt {
+            return MembershipDisplay(
+                tierDisplayName: tier,
+                date: renewsAt,
+                kind: .vendorRenewal
             )
         }
         if let trialEndsAt = observation?.trialEndsAt {

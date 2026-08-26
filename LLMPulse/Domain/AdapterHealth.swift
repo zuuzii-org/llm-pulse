@@ -13,6 +13,7 @@ struct AdapterHealth: Identifiable, Codable, Equatable, Sendable {
         case claudeAgentJournal
         case zcodeSQLite
         case zcodeEventLog
+        case zcodeEntitlementCache
     }
 
     enum Status: Int, Codable, Comparable, Sendable {
@@ -55,6 +56,7 @@ struct AdapterHealth: Identifiable, Codable, Equatable, Sendable {
         .appServer,
         .pluginJournal,
         .claudeAgentJournal,
+        .zcodeEntitlementCache,
     ]
 
     var isActionable: Bool {

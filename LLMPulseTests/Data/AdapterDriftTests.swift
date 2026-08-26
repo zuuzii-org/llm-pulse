@@ -150,7 +150,11 @@ final class AdapterDriftTests: XCTestCase {
     }
 
     func testFormatDriftStaysActionableOnOtherwiseSuppressedAdapters() {
-        for adapter in [AdapterHealth.Adapter.appServer, .pluginJournal] {
+        for adapter in [
+            AdapterHealth.Adapter.appServer,
+            .pluginJournal,
+            .zcodeEntitlementCache,
+        ] {
             XCTAssertFalse(
                 AdapterHealth.unavailable(adapter, message: "offline").isActionable,
                 "An optional source being absent is a normal configuration."

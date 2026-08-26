@@ -271,6 +271,8 @@ enum TaskNotificationSnapshotReliability {
                  .zcodeSQLite,
                  .zcodeEventLog:
                 $0.status != .healthy
+            case .zcodeEntitlementCache:
+                false
             default:
                 false
             }

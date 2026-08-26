@@ -55,11 +55,11 @@ enum RateLimitWindowDuration {
 }
 
 struct RateLimitSnapshot: Codable, Equatable, Sendable {
-    /// Optional compatibility data retained for a possible future 5h surface.
-    /// A missing or malformed legacy window never invalidates weekly limits.
+    /// Rolling five-hour account allowance when the provider reports one.
+    /// A missing or malformed five-hour window never invalidates a weekly one.
     let fiveHour: RateLimitWindowSnapshot?
-    /// Canonical Codex account quota. Data sources reject snapshots that do not
-    /// contain this exact weekly window.
+    /// Seven-day account allowance. Individual data sources decide whether the
+    /// window is required by their provider contract.
     let weekly: RateLimitWindowSnapshot?
     let updatedAt: Date
     let planType: String?

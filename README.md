@@ -21,13 +21,13 @@
 
 The interface supports English and Simplified Chinese. Choose Follow System, 简体中文, or English in Settings; changes apply immediately without restarting.
 
-> ZCode / GLM support in v2.7.0 is a personal-machine adapter validated against ZCode 3.8.1's local data layout. It is not a general provider/API integration and degrades safely when the upstream format cannot be trusted.
+> ZCode / GLM support began as a personal-machine adapter in v2.7.0. v2.8.0 adds read-only local Coding Plan entitlement data. The adapter is validated against ZCode 3.8.1's local layout, is not a general provider/API integration, and degrades safely when the upstream format cannot be trusted.
 
 ## Product facts
 
 | | |
 |---|---|
-| **Product** | LLM Pulse 2.7.0 |
+| **Product** | LLM Pulse 2.8.0 |
 | **Developer** | Zuuzii |
 | **Platform** | macOS 14 or later; Apple Silicon and Intel |
 | **Category** | Local coding-agent task monitor and menu bar utility |
@@ -39,20 +39,20 @@ The interface supports English and Simplified Chinese. Choose Follow System, 简
 
 ## Download
 
-[Download the latest signed and notarized DMG](https://github.com/zuuzii-org/llm-pulse/releases/latest). LLM Pulse 2.7.0 requires macOS 14 or later and ships as a Universal App for Apple Silicon and Intel Macs.
+[Download the latest signed and notarized DMG](https://github.com/zuuzii-org/llm-pulse/releases/latest). LLM Pulse 2.8.0 requires macOS 14 or later and ships as a Universal App for Apple Silicon and Intel Macs.
 
-The v2.7.0 release assets are:
+The v2.8.0 release assets are:
 
-- `LLM-Pulse-2.7.0.dmg`
-- `LLM-Pulse-2.7.0.dmg.sha256`
+- `LLM-Pulse-2.8.0.dmg`
+- `LLM-Pulse-2.8.0.dmg.sha256`
 
 Place both files in the same folder and verify the download with:
 
 ```bash
-shasum -a 256 -c LLM-Pulse-2.7.0.dmg.sha256
+shasum -a 256 -c LLM-Pulse-2.8.0.dmg.sha256
 ```
 
-Users on v1.0.0 must install v1.1.0 manually once because v1.0.0 did not include in-app updates. Users on v1.1–v1.3 should install and launch v1.4 before updating to v2.7.0.
+Users on v1.0.0 must install v1.1.0 manually once because v1.0.0 did not include in-app updates. Users on v1.1–v1.3 should install and launch v1.4 before updating to v2.8.0.
 
 ## What LLM Pulse shows
 
@@ -62,6 +62,7 @@ Users on v1.0.0 must install v1.1.0 manually once because v1.0.0 did not include
 - **Useful task context.** Each row shows the project, session, elapsed time, latest state, cumulative token use, and the active total for the main agent plus descendant agents.
 - **Exact Claude limits, optionally.** Claude Code knows its own reset times; the desktop app receives them and keeps only the percentages. Install the bundled `usage-bridge.sh` as your Claude Code status line and LLM Pulse shows the reported reset times instead of inferring them. LLM Pulse never edits `~/.claude/settings.json` — Settings hands you the snippet to paste.
 - **Codex weekly usage.** The usage card shows the remaining weekly percentage, an exact reset date and time in Beijing time (UTC+8), and data freshness.
+- **GLM Coding Plan usage.** When ZCode has written a fresh entitlement snapshot, the GLM page shows the reported 5-hour and 7-day remaining percentages and reset times, together with the plan renewal or expiry date. LLM Pulse reads that short-lived local snapshot only; it does not call ZCode billing APIs.
 - **Safe task opening.** Codex uses `codex://threads/<thread-id>`. Claude Code and ZCode have no verified session deep link, so LLM Pulse only activates the corresponding running app instead of guessing a URL.
 - **Native notifications.** Choose attention-only, important, or all recognizable states. Notifications support task actions, 15-minute or 1-hour snooze, quiet completion summaries, and weekly usage warnings.
 - **Three runtimes, one panel.** The current source observes Codex Desktop, Claude Code, and ZCode / GLM side by side. Swipe left or right with two fingers, or press Control+Left/Right, to switch model pages. Menu bar totals stay global across all three.
@@ -78,7 +79,7 @@ LLM Pulse combines narrow local adapters instead of treating any private upstrea
 2. Codex state SQLite databases are opened read-only with SQLite `query_only` enabled.
 3. Rollout JSONL is parsed for task state, timestamps, agent lifecycle, token summaries, and compatible usage snapshots.
 4. The bundled Codex App Server is queried locally with `account/rateLimits/read`; the current interface and notifications use the weekly window.
-5. The ZCode source opens `~/.zcode/cli/db/db.sqlite` in query-only mode and extracts only whitelisted state, permission, and subagent identifiers from event logs; it does not read messages, model I/O, or credentials.
+5. The ZCode source opens `~/.zcode/cli/db/db.sqlite` in query-only mode, extracts only whitelisted state, permission, and subagent identifiers from event logs, and reads only provider/quota/subscription fields from ZCode's short-lived Chromium Local Storage entitlement cache. It does not read messages, model I/O, or credentials, and it never refreshes the cache over the network.
 6. Viewed receipts and LLM Pulse preferences stay under `~/Library/Application Support/LLM Pulse/`. Upgrade-only path aliases are isolated in centralized `LegacyCompatibility` definitions.
 
 Only roots validated by each source appear as rows; ZCode additionally requires the root's current selection to use GLM. Descendant agents are rolled into the active `Agent N` total of their root task rather than displayed separately. See [the architecture notes](docs/ARCHITECTURE.md) for state precedence, retention, usage semantics, and adapter failure behavior.
@@ -89,6 +90,7 @@ LLM Pulse is designed as a read-only observer:
 
 - It does not write to Codex, Claude Code, or ZCode databases, logs, transcripts, task records, or runtime state.
 - It does not extract, retain, or upload prompts, tool input, tool output, or transcript content.
+- The ZCode entitlement reader keeps only allowlisted provider, quota-window, and subscription fields. Account/fingerprint key suffixes are reduced to in-memory SHA-256 identities solely to apply LevelDB tombstones and are never exposed or persisted by LLM Pulse.
 - The optional Codex journal keeps only `session_id`, `turn_id`, the event name, and a timestamp. It does not record project paths, prompts, messages, tool payloads, or responses.
 - Viewed receipts, notification settings, and weekly-warning deduplication keys stay on the Mac. Muted projects are stored as SHA-256 identifiers rather than plain-text paths.
 - No OpenAI API key is required. LLM Pulse includes no task analytics or task-data upload service.
@@ -162,6 +164,10 @@ It is the remaining percentage calculated from the Codex-reported used percentag
 
 It asks the bundled local Codex App Server for the weekly limit reported to Codex Desktop. Compatible local rollout data is used only as a fallback. The current interface and notifications use only the weekly window.
 
+### How does LLM Pulse read GLM Coding Plan usage and membership dates?
+
+ZCode writes a short-lived entitlement snapshot to its Chromium Local Storage. Current source builds read that LevelDB database in place and accept only an official Coding Plan provider plus allowlisted 5-hour, 7-day, and subscription fields. A snapshot must be no more than 10 minutes old; LLM Pulse does not reuse ZCode credentials or make a network request to refresh it. A manual membership date in Settings still takes priority over the observed renewal or expiry date.
+
 ### Can LLM Pulse open a task directly in Codex Desktop?
 
 Yes. Clicking a row opens the matching task through a local `codex://threads/<thread-id>` link. If navigation fails, LLM Pulse keeps the task unread and reports the error instead of silently acknowledging it.
@@ -186,7 +192,7 @@ No. LLM Pulse is an independent open-source project by Zuuzii and is not affilia
 - Codex hooks have no separate approval-resolved event. A task may remain in the approval-waiting state until the related tool emits `PostToolUse`.
 - ZCode's local schema and diagnostic events are also private compatibility surfaces. This personal adapter targets the layout verified on this Mac and fails closed when it drifts.
 - ZCode has no verified task/session deep link; a GLM row can only activate an already-running ZCode app.
-- ZCode does not persist a trustworthy account quota, reset time, or subscription expiry. GLM expiry must be entered manually in Settings.
+- GLM quota and membership details appear only while ZCode's local entitlement snapshot is fresh (10 minutes). LLM Pulse does not refresh it over the network; stale, malformed, or multiple unresolvable provider/account snapshots are hidden. A manual date in Settings remains available and overrides an observed date.
 - Weekly usage data provides a percentage and reset time, not a reliable absolute token allowance.
 - App-generated interface text supports English and Simplified Chinese. User task titles, project paths, and raw Codex content remain unchanged.
 

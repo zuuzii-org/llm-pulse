@@ -100,6 +100,8 @@
 
 "5h 余额" = "5h Left";
 "最近 5 小时额度的剩余比例" = "Remaining share of the rolling 5-hour limit";
+"7 天余额" = "7d Left";
+"7 天额度的剩余比例" = "Remaining share of the 7-day limit";
 "本周余额" = "Week Left";
 "本周额度的剩余比例" = "Remaining share of the weekly limit";
 "额度待刷新" = "Usage limits awaiting refresh";
@@ -161,6 +163,8 @@
 "Claude Code 子 Agent 记录尚未生成" = "Claude Code has not written any subagent records yet";
 "无法读取 ZCode 本地任务索引" = "Unable to read the local ZCode task index";
 "无法读取 ZCode 任务事件记录" = "Unable to read ZCode task event records";
+"无法读取 ZCode 额度与会员缓存" = "Unable to read the ZCode quota and membership cache";
+"GLM Coding Plan 数据格式可能已更新，额度与会员信息暂不可用" = "The GLM Coding Plan data format may have changed; quota and membership details are unavailable";
 "5 小时窗口" = "5-hour window";
 "7 天窗口" = "7-day window";
 "已用 %d%%" = "%d%% used";
@@ -187,13 +191,15 @@
 "%@，%@" = "%@, %@";
 "会员" = "Membership";
 "%@ 到期" = "Expires %@";
+"%@ 续费" = "Renews %@";
+"续费信息待刷新" = "Renewal details awaiting refresh";
 "试用至 %@" = "Trial until %@";
 "约 %@ 续费" = "Renews around %@";
 "已到期" = "Expired";
 "手动指定 %@ 到期日" = "Set the %@ expiry date manually";
 "到期日" = "Expiry Date";
 "待处理 %d · 运行 %d" = "%d waiting · %d running";
-"填写后覆盖自动推导的续费日；读取到订阅起始日时会按月推算，GLM 到期日需手动填写。" = "A date entered here is shown exactly, replacing any derived renewal. Monthly projection is used only when a subscription start is available; GLM expiry must be entered manually.";
+"填写后覆盖自动读取或推导的日期；只有读取到订阅起始日时，才会按月推算并标注为约。" = "A date entered here overrides any observed or derived date. A monthly estimate marked as approximate is used only when a subscription start is available.";
 "模型数据源暂不可用" = "The model data source is temporarily unavailable";
 "模型数据源刷新超时或返回了无效身份" = "The model data source timed out or returned an invalid identity";
 "刚刚" = "just now";

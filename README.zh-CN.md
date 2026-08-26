@@ -21,13 +21,13 @@
 
 应用界面支持简体中文和英文。可在设置中选择“跟随系统 / 简体中文 / English”，切换后立即生效，无需重启。
 
-> v2.7.0 中的 ZCode / GLM 支持是针对 ZCode 3.8.1 本机数据布局验证的个人适配，不是通用的 provider/API 集成；上游格式无法可信解析时会安全降级。
+> ZCode / GLM 从 v2.7.0 开始以个人本机适配方式提供；v2.8.0 新增 Coding Plan entitlement 本机只读数据。当前适配按 ZCode 3.8.1 本机布局验证，不是通用的 provider/API 集成；上游格式无法可信解析时会安全降级。
 
 ## 产品信息
 
 | | |
 |---|---|
-| **产品** | LLM Pulse 2.7.0 |
+| **产品** | LLM Pulse 2.8.0 |
 | **开发者** | Zuuzii |
 | **平台** | macOS 14 或更高版本；支持 Apple Silicon 和 Intel |
 | **类别** | 本机编码 Agent 任务监控与菜单栏工具 |
@@ -39,20 +39,20 @@
 
 ## 下载
 
-[下载最新的已签名、已公证 DMG](https://github.com/zuuzii-org/llm-pulse/releases/latest)。LLM Pulse 2.7.0 要求 macOS 14 或更高版本，同时支持 Apple Silicon 和 Intel Mac。
+[下载最新的已签名、已公证 DMG](https://github.com/zuuzii-org/llm-pulse/releases/latest)。LLM Pulse 2.8.0 要求 macOS 14 或更高版本，同时支持 Apple Silicon 和 Intel Mac。
 
-v2.7.0 Release 附件包括：
+v2.8.0 Release 附件包括：
 
-- `LLM-Pulse-2.7.0.dmg`
-- `LLM-Pulse-2.7.0.dmg.sha256`
+- `LLM-Pulse-2.8.0.dmg`
+- `LLM-Pulse-2.8.0.dmg.sha256`
 
 将两个文件放在同一目录，然后执行以下命令验证下载内容：
 
 ```bash
-shasum -a 256 -c LLM-Pulse-2.7.0.dmg.sha256
+shasum -a 256 -c LLM-Pulse-2.8.0.dmg.sha256
 ```
 
-v1.0.0 用户需要先手动安装一次 v1.1.0，因为 v1.0.0 尚未包含应用内更新。v1.1–v1.3 用户应先安装并启动 v1.4，再升级到 v2.7.0。
+v1.0.0 用户需要先手动安装一次 v1.1.0，因为 v1.0.0 尚未包含应用内更新。v1.1–v1.3 用户应先安装并启动 v1.4，再升级到 v2.8.0。
 
 ## LLM Pulse 能显示什么
 
@@ -62,6 +62,7 @@ v1.0.0 用户需要先手动安装一次 v1.1.0，因为 v1.0.0 尚未包含应�
 - **有用的任务上下文。** 每项显示项目、session、持续时间、最后状态、累计 token，以及主 Agent 和全部层级子 Agent 的活跃总数。
 - **可选：Claude 限额精确到分钟。** Claude Code 自己知道重置时间，桌面应用收到后只保留了百分比。把随包附带的 `usage-bridge.sh` 装为 Claude Code 状态栏命令，LLM Pulse 就显示上游给的准确重置时间，而不再靠推算。LLM Pulse 不会修改 `~/.claude/settings.json`——设置页把配置片段给你，由你自己贴。
 - **Codex 每周额度。** 用量卡显示每周剩余百分比、以北京时间（UTC+8）显示的准确重置日期和时间，以及数据新鲜度。
+- **GLM Coding Plan 额度。** ZCode 写入新鲜 entitlement 快照后，GLM 页面会显示上游报告的 5 小时、7 天剩余百分比与重置时间，以及套餐续费或到期日。LLM Pulse 只读这份短期本机快照，不调用 ZCode 计费 API。
 - **安全打开任务。** Codex 通过 `codex://threads/<thread-id>` 定位；Claude Code 与 ZCode 没有已验证的 session deep link，因此只激活对应的运行中应用，不猜测 URL。
 - **原生通知。** 可选择“仅需我处理”“重要状态”或“全部”；支持任务操作、稍后 15 分钟或 1 小时提醒、安静的完成摘要和每周额度预警。
 - **三个运行时，同一个面板。** 当前源码同时观测 Codex Desktop、Claude Code 与 ZCode / GLM。双指左右滑动，或按 Control+←/→ 切换模型页；菜单栏总数始终跨三者全局统计。
@@ -78,7 +79,7 @@ LLM Pulse 使用几层职责明确的本地适配器，不把任何一种上游�
 2. Codex state SQLite 始终以 read-only 模式打开，并启用 SQLite `query_only`。
 3. rollout JSONL 只解析任务状态、时间、Agent 生命周期、token 汇总和兼容的用量快照。
 4. LLM Pulse 通过本机连接查询 Codex bundled App Server 的 `account/rateLimits/read`；当前界面和通知只使用每周窗口。
-5. ZCode source 以 query-only 模式读取 `~/.zcode/cli/db/db.sqlite`，并只从事件日志白名单提取状态、permission 和 subagent 标识；不读取 message、模型 I/O 或凭据。
+5. ZCode source 以 query-only 模式读取 `~/.zcode/cli/db/db.sqlite`，只从事件日志白名单提取状态、permission 和 subagent 标识，并只从 ZCode 的短期 Chromium Local Storage entitlement 缓存读取 provider、quota 和 subscription 白名单字段；不读取 message、模型 I/O 或凭据，也不会通过网络刷新缓存。
 6. 已查看回执与 LLM Pulse 偏好保存在 `~/Library/Application Support/LLM Pulse/`。仅升级使用的旧路径别名集中放在 `LegacyCompatibility` 定义中。
 
 只有各 source 经过验证的根任务或根会话会成为独立任务行；ZCode 还必须确认当前 selection 使用 GLM。子 Agent 不单列，而是聚合到根任务的活跃 `Agent N` 总数中。状态优先级、保留策略、用量口径与 adapter 降级行为见[架构说明](docs/ARCHITECTURE.md)。
@@ -89,6 +90,7 @@ LLM Pulse 的设计边界是只读观察：
 
 - 不写入 Codex、Claude Code 或 ZCode 的数据库、日志、转录、任务记录或运行时 state。
 - 不提取、不保留、不上传 prompt、tool input、tool output 或 transcript 内容。
+- ZCode entitlement reader 只保留白名单中的 provider、额度窗口和订阅字段。Local Storage key 的账户/fingerprint 后缀仅在内存中转成 SHA-256 标识以正确处理 LevelDB tombstone，不会由 LLM Pulse 暴露或持久化。
 - 可选 Codex journal 只保存 `session_id`、`turn_id`、事件名和时间戳，不记录项目路径、prompt、消息、工具载荷或响应正文。
 - 已查看回执、通知设置和每周额度预警去重键仅保存在本机；项目静音保存 SHA-256 标识，不保存明文路径。
 - 不需要 OpenAI API Key；应用不包含任务分析服务，也不会上传任务数据。
@@ -162,6 +164,10 @@ LLM Pulse 是一款监控本机 Codex Desktop 任务的原生 macOS 菜单栏应
 
 它通过本机 Codex App Server 读取 Codex Desktop 报告的每周额度。兼容的本地 rollout 数据仅作为兜底。当前界面和通知只使用每周窗口。
 
+### LLM Pulse 如何读取 GLM Coding Plan 额度和会员日期？
+
+ZCode 会把一份短期 entitlement 快照写入自己的 Chromium Local Storage。当前源码会原地只读这份 LevelDB 数据库，并且只接受官方 Coding Plan provider，以及 5 小时、7 天和 subscription 白名单字段。快照必须在 10 分钟内；LLM Pulse 不复用 ZCode 凭据，也不发起网络请求刷新。设置中手动填写的会员日期仍然优先于观测到的续费或到期日。
+
 ### 能否从 LLM Pulse 直接打开 Codex Desktop 任务？
 
 可以。点击任务行会通过本机 `codex://threads/<thread-id>` 链接打开对应任务。如果跳转失败，LLM Pulse 会保留未查看状态并显示错误，不会静默确认任务。
@@ -182,7 +188,7 @@ LLM Pulse 是一款监控本机 Codex Desktop 任务的原生 macOS 菜单栏应
 - Codex hooks 没有独立的“授权已批准”事件；相关工具产生 `PostToolUse` 前，任务可能短暂保持等待授权。
 - ZCode 本地 schema 与诊断事件同样是私有兼容面；当前个人适配按本机已验证布局工作，格式变化时对应 adapter 会 fail closed。
 - ZCode 没有已验证的 task/session deep link；GLM 行只能激活已经运行的 ZCode。
-- ZCode 本地数据不提供可信的账户额度、重置时刻或订阅到期日；GLM 到期日需在设置中手动填写。
+- GLM 额度和会员信息只在 ZCode 本机 entitlement 快照仍新鲜（10 分钟）时显示；LLM Pulse 不通过网络刷新。快照陈旧、格式异常，或存在无法消歧的多个 provider/account 时会隐藏；设置中的手动日期仍可使用并覆盖观测日期。
 - 每周额度数据只提供百分比与重置时间，没有可可靠换算的绝对 token 配额。
 - App 自身界面文案支持简体中文和英文；用户任务名、项目路径和 Codex 原始内容保持原样。
 

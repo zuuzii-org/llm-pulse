@@ -10,6 +10,7 @@
 		00B30B85FBDE8A13BCFA6BE6 /* ProvisionalFailureNotificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F50EC81E11E43A15D61CEB34 /* ProvisionalFailureNotificationTests.swift */; };
 		00F7A50592CF4D90AC00AEA2 /* NotificationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CBF23E23C78A5953B8176B7 /* NotificationServiceTests.swift */; };
 		0169A7D2E740F0AD2FACAF07 /* ClaudeCLIUsageReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BA5D6876AF1A15D43BBF227 /* ClaudeCLIUsageReader.swift */; };
+		018F61A1A0E5BD66CDB9186F /* ZCodeEntitlementCacheReaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA904EEEFBABA3E245C698E3 /* ZCodeEntitlementCacheReaderTests.swift */; };
 		01AD0F4F024C9EE809EF2B9B /* CodexAppServerRateLimitClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8048A32DE531A2405853970 /* CodexAppServerRateLimitClient.swift */; };
 		0376768D29FF750F79F55BC0 /* PulseSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 603A613AE8978919A644BA84 /* PulseSettingsTests.swift */; };
 		058C00EBD70FB010DDE8CD28 /* EdgeTriggerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CF43A974DE369EA8566BD01 /* EdgeTriggerService.swift */; };
@@ -48,6 +49,7 @@
 		3E080963E7BB603418D6BA3E /* ReceiptStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 911BE851C765C44F33BFDA7F /* ReceiptStoreTests.swift */; };
 		3E470C224AA939A6B4AA4234 /* PulseSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3986103AF072D1993C537B27 /* PulseSettings.swift */; };
 		4579A809FD2695A17A3DF82B /* LegacyCompatibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DE13F355C470F05C99B834D /* LegacyCompatibility.swift */; };
+		4778B4544FC1728C76A819E5 /* ZCodeEntitlementCacheReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B2C70645937E65BDC8BD073 /* ZCodeEntitlementCacheReader.swift */; };
 		492060F1DC9554CB9A5424EE /* TaskMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D491D7302F92654F582C15FD /* TaskMonitor.swift */; };
 		4ADF5F5B005A4C9DC61D514C /* TaskPanelGeometryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B09E07A2FC49E99B32A29FC /* TaskPanelGeometryTests.swift */; };
 		4AED93AFCFB91502491EEABA /* CodexAccountRateLimitObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5FB04E8FABA656A70400780 /* CodexAccountRateLimitObserver.swift */; };
@@ -167,6 +169,7 @@
 		23C009F34CF4E3589C619FF7 /* PulseTaskPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PulseTaskPresentationTests.swift; sourceTree = "<group>"; };
 		24E7CA35440A778C7016C69F /* AppBundleNameMigrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppBundleNameMigrator.swift; sourceTree = "<group>"; };
 		2A2BF535E3DD12F22F7531E3 /* usage-bridge.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "usage-bridge.sh"; sourceTree = "<group>"; };
+		2B2C70645937E65BDC8BD073 /* ZCodeEntitlementCacheReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZCodeEntitlementCacheReader.swift; sourceTree = "<group>"; };
 		2DD655F5F04B5E04E342265C /* PulseTaskPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PulseTaskPresentation.swift; sourceTree = "<group>"; };
 		2F4D70B177CDDBCCDA3FCB84 /* ClaudeAgentActivityObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeAgentActivityObserver.swift; sourceTree = "<group>"; };
 		335237F1F4F2B7970BD13A08 /* CodexAppServerRateLimitClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexAppServerRateLimitClientTests.swift; sourceTree = "<group>"; };
@@ -262,6 +265,7 @@
 		E8048A32DE531A2405853970 /* CodexAppServerRateLimitClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexAppServerRateLimitClient.swift; sourceTree = "<group>"; };
 		E94BB48620806EBEB1AA8C02 /* PulseTaskState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PulseTaskState.swift; sourceTree = "<group>"; };
 		EA4802BBEC778F6A343EF4AB /* TaskSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskSnapshotTests.swift; sourceTree = "<group>"; };
+		EA904EEEFBABA3E245C698E3 /* ZCodeEntitlementCacheReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZCodeEntitlementCacheReaderTests.swift; sourceTree = "<group>"; };
 		EE9704139283312977C70460 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		EF1234D50CD49C63574321F1 /* ZCodeDataRecords.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZCodeDataRecords.swift; sourceTree = "<group>"; };
 		F3BBCC1A9EC2CAEEB0DEFC40 /* CodexAgentActivityObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexAgentActivityObserver.swift; sourceTree = "<group>"; };
@@ -424,6 +428,7 @@
 				D491D7302F92654F582C15FD /* TaskMonitor.swift */,
 				55A146903667321CA3E3EA9B /* TaskRepository.swift */,
 				EF1234D50CD49C63574321F1 /* ZCodeDataRecords.swift */,
+				2B2C70645937E65BDC8BD073 /* ZCodeEntitlementCacheReader.swift */,
 				1A3DFE01BD4A9BAC91046D0E /* ZCodeEventLogReader.swift */,
 				3BB3FBBC743AB4B87C3B7A76 /* ZCodePaths.swift */,
 				9D3992234C8993AF1915AD5A /* ZCodeSourceRepository.swift */,
@@ -502,6 +507,7 @@
 				352855BDB1D1C8220487C5A8 /* RolloutRateLimitSelectorTests.swift */,
 				9AB2585483F8ACB7D9532F66 /* TaskRepositoryTests.swift */,
 				EA4802BBEC778F6A343EF4AB /* TaskSnapshotTests.swift */,
+				EA904EEEFBABA3E245C698E3 /* ZCodeEntitlementCacheReaderTests.swift */,
 				9DFAF21FDCDF930F8A33B86C /* ZCodeEventLogReaderTests.swift */,
 				F922C0185E1DE848E9C85B83 /* ZCodeLiveSmokeTests.swift */,
 				222B0B31027C78FE5992CE70 /* ZCodePathsTests.swift */,
@@ -667,6 +673,7 @@
 				649B0ABF43F51D88ADDC483F /* TaskRepositoryTests.swift in Sources */,
 				3393EB539219AA08A18D2231 /* TaskSidebarViewRenderTests.swift in Sources */,
 				2E69BCFDD7CD622766D72EF7 /* TaskSnapshotTests.swift in Sources */,
+				018F61A1A0E5BD66CDB9186F /* ZCodeEntitlementCacheReaderTests.swift in Sources */,
 				B5D7A4E51716AFC00AE9F362 /* ZCodeEventLogReaderTests.swift in Sources */,
 				74B2D323060C0A5FE429FDB4 /* ZCodeLiveSmokeTests.swift in Sources */,
 				116DF12AE78864691E2A27E4 /* ZCodePathsTests.swift in Sources */,
@@ -747,6 +754,7 @@
 				881D24DD08C29FC49CF963EB /* TaskSnapshot.swift in Sources */,
 				81AB2E254225AE836B373EAF /* UsageSnapshots.swift in Sources */,
 				1807D5EF49A50E230BB3EF48 /* ZCodeDataRecords.swift in Sources */,
+				4778B4544FC1728C76A819E5 /* ZCodeEntitlementCacheReader.swift in Sources */,
 				0C66DFC47E5E38ED3D6C015F /* ZCodeEventLogReader.swift in Sources */,
 				5F3750F113DD50F76F6DA29D /* ZCodePaths.swift in Sources */,
 				AC0F7954BE9C9E3E6D6A6D87 /* ZCodeSQLiteReader.swift in Sources */,

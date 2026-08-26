@@ -12,6 +12,10 @@ final class ZCodePathsTests: XCTestCase {
         XCTAssertEqual(paths.zcodeHome.path, "/tmp/zcode-fixture")
         XCTAssertEqual(paths.databaseURL.path, "/tmp/zcode-fixture/cli/db/db.sqlite")
         XCTAssertEqual(paths.eventLogDirectory.path, "/tmp/zcode-fixture/cli/log")
+        XCTAssertEqual(
+            paths.entitlementLocalStorageDirectory.path,
+            "/Users/example/Library/Application Support/ZCode/session/Local Storage/leveldb"
+        )
     }
 
     func testEmptyOverrideFallsBackToDotZCodeUnderHome() {
@@ -21,6 +25,21 @@ final class ZCodePathsTests: XCTestCase {
         )
 
         XCTAssertEqual(paths.zcodeHome.path, "/Users/example/.zcode")
+        XCTAssertEqual(
+            paths.entitlementLocalStorageDirectory.path,
+            "/Users/example/Library/Application Support/ZCode/session/Local Storage/leveldb"
+        )
+    }
+
+    func testFixtureInitializerKeepsEntitlementCacheInsideFixtureRoot() {
+        let paths = ZCodePaths(
+            zcodeHome: URL(fileURLWithPath: "/tmp/zcode-fixture", isDirectory: true)
+        )
+
+        XCTAssertEqual(
+            paths.entitlementLocalStorageDirectory.path,
+            "/tmp/zcode-fixture/session/Local Storage/leveldb"
+        )
     }
 
     func testRecentEventLogsRejectUnrelatedFilesAndRemainBounded() throws {

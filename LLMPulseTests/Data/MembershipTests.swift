@@ -46,7 +46,9 @@ final class MembershipTests: XCTestCase {
             observation: MembershipObservation(
                 tierDisplayName: "Max 20x",
                 subscriptionAnchor: now.addingTimeInterval(-40 * 24 * 60 * 60),
-                trialEndsAt: now.addingTimeInterval(5 * 24 * 60 * 60)
+                trialEndsAt: now.addingTimeInterval(5 * 24 * 60 * 60),
+                renewsAt: now.addingTimeInterval(20 * 24 * 60 * 60),
+                expiresAt: now.addingTimeInterval(15 * 24 * 60 * 60)
             ),
             manualExpiry: manual,
             now: now
@@ -55,6 +57,57 @@ final class MembershipTests: XCTestCase {
         XCTAssertEqual(display?.date, manual)
         XCTAssertEqual(display?.kind, .manualExpiry)
         XCTAssertEqual(display?.tierDisplayName, "Max 20x")
+    }
+
+    func testVendorExpiryOutranksRenewalAndTrial() {
+        let expiry = now.addingTimeInterval(8 * 24 * 60 * 60)
+        let display = MembershipDisplay.resolve(
+            observation: MembershipObservation(
+                tierDisplayName: "Coding Plan",
+                subscriptionAnchor: now.addingTimeInterval(-40 * 24 * 60 * 60),
+                trialEndsAt: now.addingTimeInterval(5 * 24 * 60 * 60),
+                renewsAt: now.addingTimeInterval(10 * 24 * 60 * 60),
+                expiresAt: expiry
+            ),
+            manualExpiry: nil,
+            now: now
+        )
+
+        XCTAssertEqual(display?.date, expiry)
+        XCTAssertEqual(display?.kind, .vendorExpiry)
+    }
+
+    func testVendorRenewalOutranksTrialEnd() {
+        let trialEnd = now.addingTimeInterval(5 * 24 * 60 * 60)
+        let renewal = now.addingTimeInterval(10 * 24 * 60 * 60)
+        let display = MembershipDisplay.resolve(
+            observation: MembershipObservation(
+                tierDisplayName: "Coding Plan",
+                trialEndsAt: trialEnd,
+                renewsAt: renewal
+            ),
+            manualExpiry: nil,
+            now: now
+        )
+
+        XCTAssertEqual(display?.date, renewal)
+        XCTAssertEqual(display?.kind, .vendorRenewal)
+    }
+
+    func testVendorRenewalOutranksDerivedRenewal() {
+        let renewal = now.addingTimeInterval(12 * 24 * 60 * 60)
+        let display = MembershipDisplay.resolve(
+            observation: MembershipObservation(
+                tierDisplayName: "Coding Plan",
+                subscriptionAnchor: now.addingTimeInterval(-40 * 24 * 60 * 60),
+                renewsAt: renewal
+            ),
+            manualExpiry: nil,
+            now: now
+        )
+
+        XCTAssertEqual(display?.date, renewal)
+        XCTAssertEqual(display?.kind, .vendorRenewal)
     }
 
     func testATrialEndOutranksTheDerivedRenewal() {
