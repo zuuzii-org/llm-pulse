@@ -436,8 +436,7 @@ final class ZCodeTaskRepositoryTests: XCTestCase {
         ])
         let repository = ZCodeTaskRepository(
             paths: tree.paths,
-            entitlementReader: reader,
-            entitlementFreshnessInterval: 10 * 60
+            entitlementReader: reader
         )
 
         let initial = await repository.snapshot(now: base)

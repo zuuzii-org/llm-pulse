@@ -220,6 +220,12 @@ final class ZCodeEntitlementCacheReader: @unchecked Sendable {
     private static let maximumEntitlementEntries = 64
     private static let maximumEntitlementValueBytes = 256 * 1_024
     private static let clockSkewTolerance: TimeInterval = 60
+    /// ZCode refreshes this renderer-owned snapshot on app and account
+    /// activity, not on a fixed schedule, so a same-day snapshot is the
+    /// display horizon. Individual windows still self-hide downstream once
+    /// their reset time passes; an aged percentage is labeled with its
+    /// observation time instead of being inferred forward.
+    static let defaultMaximumCacheAge: TimeInterval = 24 * 60 * 60
     private static let localStorageEncodingMarker: UInt8 = 1
     private static let localStorageKeyPrefix = Array(
         Data("_file://\0\u{1}zcode:usage-entitlement:".utf8)
@@ -243,7 +249,7 @@ final class ZCodeEntitlementCacheReader: @unchecked Sendable {
 
     init(
         entitlementLocalStorageDirectory: URL,
-        maximumCacheAge: TimeInterval = 10 * 60,
+        maximumCacheAge: TimeInterval = defaultMaximumCacheAge,
         sourceReadObserver: (@Sendable (URL) -> Void)? = nil
     ) {
         self.entitlementLocalStorageDirectory = entitlementLocalStorageDirectory

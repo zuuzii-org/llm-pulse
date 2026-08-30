@@ -158,7 +158,7 @@ ZCode renderer 会把 Coding Plan entitlement 以 `{cachedAt, snapshot}` 写入 
 
 - 只接受 `builtin:bigmodel-coding-plan` 与 `builtin:zai-coding-plan` 两个 typed provider；value 只解码 quota 的 `level/limits` 与 subscription `details` 中显示所需的白名单字段。key 中的账户/fingerprint 后缀只在内存中转成 SHA-256 identity，以正确应用 sequence 与 tombstone，不进入领域快照或日志。
 - 以 `CURRENT → MANIFEST` 解析 active SST 与 WAL，合并 internal-key sequence / deletion；支持 raw 与 Snappy block。文件 owner、类型、link count、权限、CRC、边界、MANIFEST active set 或读取前后 stamp 不满足合同即 fail closed；750ms 刷新只检查 stamp，未变化时复用解析结果。
-- entitlement 默认 TTL 为 10 分钟。只有 `cachedAt` 新鲜、上游 `percentage` 合法且 `nextResetTime` 尚未经过的窗口才能生成 `RateLimitSnapshot`；`number` 是 5h/7d 窗口长度，绝不作为额度分母。5h 用 token-like limit 的 `unit == 3 && number == 5` 识别，7 天窗用 `unit == 6` 识别。
+- entitlement 默认 TTL 为 24 小时：上游不再按固定节奏重写这份 renderer 缓存（只在应用与账户活动时刷新），10 分钟阈值会把整段工作日的额度都藏掉。放宽后真正的有效性由下游保证——只有 `percentage` 合法且 `nextResetTime` 尚未经过的窗口才能生成 `RateLimitSnapshot`，过期窗口自行隐藏；界面用「更新于」标注观测时间，不把陈旧百分比冒充成当前值。读竞态的短暂保留（`.unreadable` 分支）仍固定为 10 分钟，与显示 TTL 解耦。`number` 是 5h/7d 窗口长度，绝不作为额度分母。5h 用 token-like limit 的 `unit == 3 && number == 5` 识别，7 天窗用 `unit == 6` 识别。
 - 当前可见 GLM 根任务的 provider 可以消歧；ZCode 空闲时只有恰好一个 official provider 的 fresh observation 才可展示。多个 provider/account 无法消歧、格式漂移或陈旧缓存均隐藏额度与厂商日期，不猜测、不跨账户聚合；设置里的手动日期不受影响。
 - entitlement adapter 是可选观测源，不参与任务 lifecycle 完整性，也不生成 GLM quota 通知；格式漂移会成为可操作健康提示，其余暂时缺失只静默降级。
 

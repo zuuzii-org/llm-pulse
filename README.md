@@ -166,7 +166,7 @@ It asks the bundled local Codex App Server for the weekly limit reported to Code
 
 ### How does LLM Pulse read GLM Coding Plan usage and membership dates?
 
-ZCode writes a short-lived entitlement snapshot to its Chromium Local Storage. Current source builds read that LevelDB database in place and accept only an official Coding Plan provider plus allowlisted 5-hour, 7-day, and subscription fields. A snapshot must be no more than 10 minutes old; LLM Pulse does not reuse ZCode credentials or make a network request to refresh it. A manual membership date in Settings still takes priority over the observed renewal or expiry date.
+ZCode writes an entitlement snapshot to its Chromium Local Storage and refreshes it on app and account activity rather than on a schedule. Current source builds read that LevelDB database in place and accept only an official Coding Plan provider plus allowlisted 5-hour, 7-day, and subscription fields. A snapshot stays displayable for up to 24 hours and is labeled with its observation time; a window whose reset time has passed hides itself instead of counting down. LLM Pulse does not reuse ZCode credentials or make a network request to refresh the snapshot. A manual membership date in Settings still takes priority over the observed renewal or expiry date.
 
 ### Can LLM Pulse open a task directly in Codex Desktop?
 
@@ -192,7 +192,7 @@ No. LLM Pulse is an independent open-source project by Zuuzii and is not affilia
 - Codex hooks have no separate approval-resolved event. A task may remain in the approval-waiting state until the related tool emits `PostToolUse`.
 - ZCode's local schema and diagnostic events are also private compatibility surfaces. This personal adapter targets the layout verified on this Mac and fails closed when it drifts.
 - ZCode has no verified task/session deep link; a GLM row can only activate an already-running ZCode app.
-- GLM quota and membership details appear only while ZCode's local entitlement snapshot is fresh (10 minutes). LLM Pulse does not refresh it over the network; stale, malformed, or multiple unresolvable provider/account snapshots are hidden. A manual date in Settings remains available and overrides an observed date.
+- GLM quota and membership details appear while ZCode's local entitlement snapshot is no more than 24 hours old, each shown with its observation time. LLM Pulse does not refresh it over the network; windows whose reset time has passed, malformed, or multiple unresolvable provider/account snapshots are hidden. A manual date in Settings remains available and overrides an observed date.
 - Weekly usage data provides a percentage and reset time, not a reliable absolute token allowance.
 - App-generated interface text supports English and Simplified Chinese. User task titles, project paths, and raw Codex content remain unchanged.
 

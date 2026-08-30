@@ -5,12 +5,20 @@ import Foundation
 /// independently.
 actor ZCodeTaskRepository {
     private static let entitlementClockSkewTolerance: TimeInterval = 60
+    /// ZCode stopped rewriting its renderer-owned entitlement cache on a
+    /// schedule; it now refreshes on app and account activity. A snapshot
+    /// stays displayable for one day, and each window still self-hides once
+    /// its reset time passes.
+    private static let defaultEntitlementFreshnessInterval =
+        ZCodeEntitlementCacheReader.defaultMaximumCacheAge
+    /// Continuity across a mid-read mutation is a transient-race allowance,
+    /// not a staleness policy.
+    private static let entitlementRaceRetentionInterval: TimeInterval = 10 * 60
 
     private let paths: ZCodePaths
     private let sqliteReader: ZCodeSQLiteReader
     private let eventLogReader: ZCodeEventLogReader
     private let entitlementReader: any ZCodeEntitlementReading
-    private let entitlementFreshnessInterval: TimeInterval
     private let runningStaleInterval: TimeInterval
     private let terminalRetentionInterval: TimeInterval
     private var cachedLogStamps: [EventLogStamp]?
@@ -22,7 +30,7 @@ actor ZCodeTaskRepository {
         paths: ZCodePaths,
         eventLogReader: ZCodeEventLogReader = ZCodeEventLogReader(),
         entitlementReader: (any ZCodeEntitlementReading)? = nil,
-        entitlementFreshnessInterval: TimeInterval = 10 * 60,
+        entitlementFreshnessInterval: TimeInterval = defaultEntitlementFreshnessInterval,
         runningStaleInterval: TimeInterval = TaskRetentionPolicy.runningStale,
         terminalRetentionInterval: TimeInterval = TaskRetentionPolicy.terminalRetention
     ) {
@@ -33,7 +41,6 @@ actor ZCodeTaskRepository {
             entitlementLocalStorageDirectory: paths.entitlementLocalStorageDirectory,
             maximumCacheAge: entitlementFreshnessInterval
         )
-        self.entitlementFreshnessInterval = max(0, entitlementFreshnessInterval)
         self.runningStaleInterval = runningStaleInterval
         self.terminalRetentionInterval = terminalRetentionInterval
     }
@@ -326,7 +333,7 @@ actor ZCodeTaskRepository {
         case .unreadable:
             if let retained = lastEntitlementObservation,
                retained.provider == provider,
-               (-Self.entitlementClockSkewTolerance...entitlementFreshnessInterval).contains(
+               (-Self.entitlementClockSkewTolerance...Self.entitlementRaceRetentionInterval).contains(
                    now.timeIntervalSince(retained.cachedAt)
                )
             {

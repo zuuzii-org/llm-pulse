@@ -70,6 +70,39 @@ final class ZCodeEntitlementCacheReaderTests: XCTestCase {
         )
     }
 
+    func testDefaultCacheAgeKeepsSameDaySnapshotDisplayable() throws {
+        let fixture = try EntitlementLevelDBFixture()
+        defer { fixture.remove() }
+        try fixture.install(
+            logNumber: 3,
+            logs: [3: fixture.writeBatchLog(
+                sequence: 10,
+                mutations: [
+                    .put(
+                        fixture.entitlementKey("account-a"),
+                        try fixture.entitlementValue(
+                            cachedAt: base.addingTimeInterval(-11 * 60 * 60)
+                        )
+                    ),
+                ]
+            )]
+        )
+        let reader = ZCodeEntitlementCacheReader(
+            entitlementLocalStorageDirectory: fixture.directory
+        )
+
+        guard case .observed = reader.read(provider: .bigModelCodingPlan, now: base) else {
+            return XCTFail("Expected a same-day snapshot to stay displayable")
+        }
+        XCTAssertEqual(
+            reader.read(
+                provider: .bigModelCodingPlan,
+                now: base.addingTimeInterval(24 * 60 * 60 + 61)
+            ),
+            .stale(cachedAt: base.addingTimeInterval(-11 * 60 * 60))
+        )
+    }
+
     func testTwoFreshCacheKeysForSameProviderAreAmbiguous() throws {
         let fixture = try EntitlementLevelDBFixture()
         defer { fixture.remove() }

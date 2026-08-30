@@ -166,7 +166,7 @@ LLM Pulse 是一款监控本机 Codex Desktop 任务的原生 macOS 菜单栏应
 
 ### LLM Pulse 如何读取 GLM Coding Plan 额度和会员日期？
 
-ZCode 会把一份短期 entitlement 快照写入自己的 Chromium Local Storage。当前源码会原地只读这份 LevelDB 数据库，并且只接受官方 Coding Plan provider，以及 5 小时、7 天和 subscription 白名单字段。快照必须在 10 分钟内；LLM Pulse 不复用 ZCode 凭据，也不发起网络请求刷新。设置中手动填写的会员日期仍然优先于观测到的续费或到期日。
+ZCode 会把一份 entitlement 快照写入自己的 Chromium Local Storage，并且只在应用与账户活动时刷新，没有固定节奏。当前源码会原地只读这份 LevelDB 数据库，并且只接受官方 Coding Plan provider，以及 5 小时、7 天和 subscription 白名单字段。快照在 24 小时内可显示，并标注观测时间；重置时间已过去的窗口会自行隐藏而不是继续倒计时。LLM Pulse 不复用 ZCode 凭据，也不发起网络请求刷新。设置中手动填写的会员日期仍然优先于观测到的续费或到期日。
 
 ### 能否从 LLM Pulse 直接打开 Codex Desktop 任务？
 
@@ -188,7 +188,7 @@ ZCode 会把一份短期 entitlement 快照写入自己的 Chromium Local Storag
 - Codex hooks 没有独立的“授权已批准”事件；相关工具产生 `PostToolUse` 前，任务可能短暂保持等待授权。
 - ZCode 本地 schema 与诊断事件同样是私有兼容面；当前个人适配按本机已验证布局工作，格式变化时对应 adapter 会 fail closed。
 - ZCode 没有已验证的 task/session deep link；GLM 行只能激活已经运行的 ZCode。
-- GLM 额度和会员信息只在 ZCode 本机 entitlement 快照仍新鲜（10 分钟）时显示；LLM Pulse 不通过网络刷新。快照陈旧、格式异常，或存在无法消歧的多个 provider/account 时会隐藏；设置中的手动日期仍可使用并覆盖观测日期。
+- GLM 额度和会员信息在 ZCode 本机 entitlement 快照不超过 24 小时时显示，并各自标注观测时间；LLM Pulse 不通过网络刷新。重置时间已过去的窗口、格式异常的快照，或存在无法消歧的多个 provider/account 时会隐藏；设置中的手动日期仍可使用并覆盖观测日期。
 - 每周额度数据只提供百分比与重置时间，没有可可靠换算的绝对 token 配额。
 - App 自身界面文案支持简体中文和英文；用户任务名、项目路径和 Codex 原始内容保持原样。
 
