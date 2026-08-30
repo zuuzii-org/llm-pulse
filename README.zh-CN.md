@@ -21,13 +21,13 @@
 
 应用界面支持简体中文和英文。可在设置中选择“跟随系统 / 简体中文 / English”，切换后立即生效，无需重启。
 
-> ZCode / GLM 从 v2.7.0 开始以个人本机适配方式提供；v2.8.0 新增 Coding Plan entitlement 本机只读数据。当前适配按 ZCode 3.8.1 本机布局验证，不是通用的 provider/API 集成；上游格式无法可信解析时会安全降级。
+> ZCode / GLM 从 v2.7.0 开始以个人本机适配方式提供；v2.8.0 新增 Coding Plan entitlement 本机只读数据，v2.9.0 起额度在当日快照内持续可见（ZCode 不再定时刷新这份缓存）。当前适配按本机 ZCode 布局验证，不是通用的 provider/API 集成；上游格式无法可信解析时会安全降级。
 
 ## 产品信息
 
 | | |
 |---|---|
-| **产品** | LLM Pulse 2.8.0 |
+| **产品** | LLM Pulse 2.9.0 |
 | **开发者** | Zuuzii |
 | **平台** | macOS 14 或更高版本；支持 Apple Silicon 和 Intel |
 | **类别** | 本机编码 Agent 任务监控与菜单栏工具 |
@@ -39,20 +39,20 @@
 
 ## 下载
 
-[下载最新的已签名、已公证 DMG](https://github.com/zuuzii-org/llm-pulse/releases/latest)。LLM Pulse 2.8.0 要求 macOS 14 或更高版本，同时支持 Apple Silicon 和 Intel Mac。
+[下载最新的已签名、已公证 DMG](https://github.com/zuuzii-org/llm-pulse/releases/latest)。LLM Pulse 2.9.0 要求 macOS 14 或更高版本，同时支持 Apple Silicon 和 Intel Mac。
 
-v2.8.0 Release 附件包括：
+v2.9.0 Release 附件包括：
 
-- `LLM-Pulse-2.8.0.dmg`
-- `LLM-Pulse-2.8.0.dmg.sha256`
+- `LLM-Pulse-2.9.0.dmg`
+- `LLM-Pulse-2.9.0.dmg.sha256`
 
 将两个文件放在同一目录，然后执行以下命令验证下载内容：
 
 ```bash
-shasum -a 256 -c LLM-Pulse-2.8.0.dmg.sha256
+shasum -a 256 -c LLM-Pulse-2.9.0.dmg.sha256
 ```
 
-v1.0.0 用户需要先手动安装一次 v1.1.0，因为 v1.0.0 尚未包含应用内更新。v1.1–v1.3 用户应先安装并启动 v1.4，再升级到 v2.8.0。
+v1.0.0 用户需要先手动安装一次 v1.1.0，因为 v1.0.0 尚未包含应用内更新。v1.1–v1.3 用户应先安装并启动 v1.4，再升级到 v2.9.0。
 
 ## LLM Pulse 能显示什么
 

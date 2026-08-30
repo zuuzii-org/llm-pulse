@@ -21,13 +21,13 @@
 
 The interface supports English and Simplified Chinese. Choose Follow System, 简体中文, or English in Settings; changes apply immediately without restarting.
 
-> ZCode / GLM support began as a personal-machine adapter in v2.7.0. v2.8.0 adds read-only local Coding Plan entitlement data. The adapter is validated against ZCode 3.8.1's local layout, is not a general provider/API integration, and degrades safely when the upstream format cannot be trusted.
+> ZCode / GLM support began as a personal-machine adapter in v2.7.0. v2.8.0 adds read-only local Coding Plan entitlement data, and v2.9.0 keeps that quota visible across a same-day snapshot because ZCode no longer refreshes it on a schedule. The adapter is validated against ZCode's local layout on this machine, is not a general provider/API integration, and degrades safely when the upstream format cannot be trusted.
 
 ## Product facts
 
 | | |
 |---|---|
-| **Product** | LLM Pulse 2.8.0 |
+| **Product** | LLM Pulse 2.9.0 |
 | **Developer** | Zuuzii |
 | **Platform** | macOS 14 or later; Apple Silicon and Intel |
 | **Category** | Local coding-agent task monitor and menu bar utility |
@@ -39,20 +39,20 @@ The interface supports English and Simplified Chinese. Choose Follow System, 简
 
 ## Download
 
-[Download the latest signed and notarized DMG](https://github.com/zuuzii-org/llm-pulse/releases/latest). LLM Pulse 2.8.0 requires macOS 14 or later and ships as a Universal App for Apple Silicon and Intel Macs.
+[Download the latest signed and notarized DMG](https://github.com/zuuzii-org/llm-pulse/releases/latest). LLM Pulse 2.9.0 requires macOS 14 or later and ships as a Universal App for Apple Silicon and Intel Macs.
 
-The v2.8.0 release assets are:
+The v2.9.0 release assets are:
 
-- `LLM-Pulse-2.8.0.dmg`
-- `LLM-Pulse-2.8.0.dmg.sha256`
+- `LLM-Pulse-2.9.0.dmg`
+- `LLM-Pulse-2.9.0.dmg.sha256`
 
 Place both files in the same folder and verify the download with:
 
 ```bash
-shasum -a 256 -c LLM-Pulse-2.8.0.dmg.sha256
+shasum -a 256 -c LLM-Pulse-2.9.0.dmg.sha256
 ```
 
-Users on v1.0.0 must install v1.1.0 manually once because v1.0.0 did not include in-app updates. Users on v1.1–v1.3 should install and launch v1.4 before updating to v2.8.0.
+Users on v1.0.0 must install v1.1.0 manually once because v1.0.0 did not include in-app updates. Users on v1.1–v1.3 should install and launch v1.4 before updating to v2.9.0.
 
 ## What LLM Pulse shows
 
